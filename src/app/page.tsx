@@ -10,11 +10,11 @@ import { addReferral } from "@/lib/store";
 import Link from "next/link";
 
 const FORTUNE_MODES = [
-  { icon: "🎯", title: "今日运势", subtitle: "每日一签，洞悉天机。AI 解读当日吉凶宜忌，助你趋吉避凶", price: "6.6", href: "/fortune/daily", delay: 0.1 },
-  { icon: "📅", title: "八字命理", subtitle: "子平八字，紫微斗数。深度排盘解析命局格局、事业财运、感情婚姻", price: "18.8", tag: "热门", href: "/fortune/bazi", delay: 0.2 },
-  { icon: "💑", title: "姻缘配对", subtitle: "月老牵线，命盘合婚。看两人前世今生缘分，获相处锦囊", price: "36.9", href: "/fortune/love", delay: 0.3 },
-  { icon: "🃏", title: "AI 塔罗", subtitle: "三张牌阵，AI 解牌。融合东西方占卜智慧，解答心中困惑", price: "8.8", href: "/fortune/tarot", delay: 0.4 },
-  { icon: "🏮", title: "灵签求签", subtitle: "千年古刹，AI 解签。典故为引，智慧为舟，指点迷津", price: "5.8", href: "/fortune/oracle", delay: 0.5 },
+  { icon: "🎯", title: "今日运势", subtitle: "每日免费，AI 解读当日吉凶宜忌", price: "免费", tag: "免费", href: "/fortune/daily", delay: 0.1 },
+  { icon: "🏮", title: "灵签求签", subtitle: "古刹灵签免费求，AI 解签指点迷津", price: "免费", tag: "免费", href: "/fortune/oracle", delay: 0.2 },
+  { icon: "📅", title: "八字命理", subtitle: "子平八字，紫微斗数。深度排盘解析命局格局、事业财运、感情婚姻", price: "6.6", tag: "热门", href: "/fortune/bazi", delay: 0.3 },
+  { icon: "🃏", title: "AI 塔罗", subtitle: "三张牌阵，AI 解牌。融合东西方占卜智慧，解答心中困惑", price: "3.8", href: "/fortune/tarot", delay: 0.4 },
+  { icon: "💑", title: "姻缘配对", subtitle: "月老牵线，命盘合婚。看两人前世今生缘分，获相处锦囊", price: "8.8", href: "/fortune/love", delay: 0.5 },
 ];
 
 const TESTIMONIALS = [
@@ -66,7 +66,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>择一法，窥天机</h2>
-            <p className="text-paper-100/40 text-sm tracking-wider">五种测算方式，总有一款适合你的困惑</p>
+            <p className="text-paper-100/40 text-sm tracking-wider">五种测算方式 · 两款永久免费 · 总有一款适合你的困惑</p>
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{FORTUNE_MODES.map((mode) => (<FortuneCard key={mode.title} {...mode} />))}</div>
         </div>
@@ -81,22 +81,22 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.1 }} className="mystic-card rounded-lg p-8 text-center">
               <h3 className="text-lg text-paper-100/70 mb-2" style={{ fontFamily: "'Noto Serif SC', serif" }}>结缘</h3>
-              <div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">0</span></div>
-              <ul className="text-paper-100/40 text-sm space-y-2 mb-6"><li>每日运势 3次免费</li><li>基础签文速览</li><li className="text-paper-100/20 line-through">AI 深度解读</li><li className="text-paper-100/20 line-through">详细命理分析</li></ul>
+              <div className="price-tag mb-4 justify-center"><span className="amount" style={{ fontSize: "1.5rem", fontWeight: 700, color: "#e8cf8d" }}>免费</span></div>
+              <ul className="text-paper-100/40 text-sm space-y-2 mb-6"><li className="text-gold-300">✓ 今日运势 · AI 解读</li><li className="text-gold-300">✓ 灵签求签 · AI 解签</li><li>每日各 5 次</li><li>无需付费，永久免费</li></ul>
               <Link href="/fortune/daily" className="btn-mystic block text-center">免费体验</Link>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.2 }} className="rounded-lg p-8 text-center relative" style={{ background: "linear-gradient(135deg, rgba(201, 150, 58, 0.1) 0%, rgba(10, 10, 18, 0.95) 100%)", border: "1px solid rgba(201, 150, 58, 0.4)", boxShadow: "0 0 40px rgba(201, 150, 58, 0.1)" }}>
               <span className="badge-hot absolute top-3 right-3">推荐</span>
               <h3 className="text-lg text-gold mb-2" style={{ fontFamily: "'Noto Serif SC', serif" }}>问道 · 会员</h3>
-              <div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">28.8</span><span className="text-xs text-paper-100/40">/月</span></div>
-              <ul className="text-paper-100/50 text-sm space-y-2 mb-6"><li className="text-gold-300">✓ 全模式无限次解读</li><li className="text-gold-300">✓ AI 深度命理分析</li><li className="text-gold-300">✓ 专属大师寄语</li><li className="text-gold-300">✓ 永久历史记录</li></ul>
+              <div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">9.9</span><span className="text-xs text-paper-100/40">/月</span></div>
+              <ul className="text-paper-100/50 text-sm space-y-2 mb-6"><li className="text-gold-300">✓ 全模式无限次解读</li><li className="text-gold-300">✓ 八字 · 塔罗 · 姻缘全解锁</li><li className="text-gold-300">✓ 专属大师寄语</li><li className="text-gold-300">✓ 永久历史记录</li></ul>
               <Link href="/member" className="btn-primary block text-center">立即开通</Link>
-              <p className="text-paper-100/20 text-xs mt-3">年付 ¥88（省 ¥257）· 日均 ¥0.24</p>
+              <p className="text-paper-100/20 text-xs mt-3">一杯奶茶钱，无限次算命 · 年付 ¥69 更划算</p>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.3 }} className="mystic-card rounded-lg p-8 text-center">
               <h3 className="text-lg text-paper-100/70 mb-2" style={{ fontFamily: "'Noto Serif SC', serif" }}>随缘</h3>
-              <div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">5.8</span><span className="text-xs text-paper-100/40">起</span></div>
-              <ul className="text-paper-100/40 text-sm space-y-2 mb-6"><li>单次深度解读</li><li>按需付费，用完即走</li><li>支持所有测算模式</li><li>无自动续费</li></ul>
+              <div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">3.8</span><span className="text-xs text-paper-100/40">起</span></div>
+              <ul className="text-paper-100/40 text-sm space-y-2 mb-6"><li>八字 · 塔罗 · 姻缘</li><li>单次付费，用完即走</li><li>无自动续费</li><li>首次半价</li></ul>
               <Link href="#modes" className="btn-mystic block text-center">按次购买</Link>
             </motion.div>
           </div>
