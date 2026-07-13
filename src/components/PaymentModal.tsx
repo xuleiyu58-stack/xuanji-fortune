@@ -53,17 +53,15 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
                   <span className="amount">{price}</span>
                 </div>
 
-                <div className="bg-white rounded-lg p-4 mb-4 w-48 h-48 mx-auto flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-gray-800 text-xs mb-2">微信扫码支付</p>
-                    <div className="w-32 h-32 mx-auto bg-gray-100 rounded flex items-center justify-center">
-                      <span className="text-gray-400 text-xs">
-                        上传收款码
-                        <br />
-                        即可收钱
-                      </span>
-                    </div>
-                  </div>
+                <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
+                  <p className="text-gray-700 text-xs mb-2 font-medium">微信扫码支付</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/qrcode.jpg"
+                    alt="微信收款码"
+                    className="w-44 h-44 object-contain rounded"
+                  />
+                  <p className="text-gray-400 text-[10px] mt-1">长按识别或截图扫描</p>
                 </div>
 
                 <p className="text-paper-100/40 text-xs mb-2">
