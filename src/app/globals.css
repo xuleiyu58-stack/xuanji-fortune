@@ -1,0 +1,257 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@400;600;700;900&display=swap');
+
+:root {
+  --background: #050508;
+  --foreground: #f5f0e8;
+  --gold: #c9963a;
+  --vermillion: #c41e3a;
+  --jade: #3d7356;
+  --font-display: 'Noto Serif SC', serif;
+  --font-body: 'Noto Sans SC', sans-serif;
+  --font-calligraphy: 'Ma Shan Zheng', cursive;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a45 #050508;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+
+.ink-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(196, 30, 58, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 30%, rgba(201, 150, 58, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 50% 80%, rgba(61, 115, 86, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at center, #050508 0%, #0a0a12 100%);
+}
+
+.text-gold {
+  background: linear-gradient(135deg, #d4a84b 0%, #f5e6c8 40%, #c9963a 60%, #e8cf8d 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-gold {
+  border: 1px solid rgba(201, 150, 58, 0.3);
+}
+
+.border-gold-glow {
+  border: 1px solid rgba(201, 150, 58, 0.5);
+  box-shadow: 0 0 20px rgba(201, 150, 58, 0.1), inset 0 0 20px rgba(201, 150, 58, 0.05);
+}
+
+.seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--vermillion);
+  color: var(--vermillion);
+  transform: rotate(-5deg);
+  font-family: var(--font-calligraphy);
+  font-size: 1.25rem;
+  border-radius: 4px;
+}
+
+.pattern-divider {
+  height: 24px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 8px,
+    rgba(201, 150, 58, 0.2) 8px,
+    rgba(201, 150, 58, 0.2) 10px
+  );
+  position: relative;
+}
+.pattern-divider::after {
+  content: '◆';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(201, 150, 58, 0.5);
+  font-size: 12px;
+  background: #0a0a12;
+  padding: 0 12px;
+}
+
+.mystic-card {
+  background: linear-gradient(135deg, rgba(17, 17, 34, 0.9) 0%, rgba(10, 10, 18, 0.95) 100%);
+  border: 1px solid rgba(201, 150, 58, 0.15);
+  backdrop-filter: blur(20px);
+  transition: all 0.4s ease;
+}
+.mystic-card:hover {
+  border-color: rgba(201, 150, 58, 0.4);
+  box-shadow: 0 0 30px rgba(201, 150, 58, 0.1), inset 0 0 30px rgba(201, 150, 58, 0.03);
+  transform: translateY(-2px);
+}
+
+.glass {
+  background: rgba(17, 17, 34, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(201, 150, 58, 0.1);
+}
+
+.btn-mystic {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(201, 150, 58, 0.15) 0%, rgba(180, 120, 40, 0.1) 100%);
+  border: 1px solid rgba(201, 150, 58, 0.3);
+  color: #e8cf8d;
+  padding: 12px 32px;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+}
+.btn-mystic:hover {
+  border-color: rgba(201, 150, 58, 0.6);
+  box-shadow: 0 0 30px rgba(201, 150, 58, 0.2);
+  background: linear-gradient(135deg, rgba(201, 150, 58, 0.25) 0%, rgba(180, 120, 40, 0.15) 100%);
+}
+.btn-mystic:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #c9963a 0%, #b8832e 100%);
+  border: none;
+  color: #fff;
+  padding: 14px 36px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+  letter-spacing: 0.15em;
+  box-shadow: 0 4px 20px rgba(201, 150, 58, 0.3);
+}
+.btn-primary:hover {
+  box-shadow: 0 6px 30px rgba(201, 150, 58, 0.5);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-vermillion {
+  background: linear-gradient(135deg, #c41e3a 0%, #a0182e 100%);
+  border: none;
+  color: #fff;
+  padding: 14px 36px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+  letter-spacing: 0.15em;
+  box-shadow: 0 4px 20px rgba(196, 30, 58, 0.3);
+}
+.btn-vermillion:hover {
+  box-shadow: 0 6px 30px rgba(196, 30, 58, 0.5);
+  transform: translateY(-1px);
+}
+
+.particles-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: var(--gold);
+  border-radius: 50%;
+  animation: particle 3s ease-in-out infinite;
+}
+
+.page-enter {
+  animation: inkSpreads 1s ease-out forwards;
+}
+
+.fortune-text {
+  font-family: var(--font-display);
+  line-height: 2;
+  letter-spacing: 0.05em;
+}
+.fortune-text p {
+  margin-bottom: 1rem;
+}
+.fortune-text strong {
+  color: #e8cf8d;
+}
+
+.mystic-loader {
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgba(201, 150, 58, 0.2);
+  border-top-color: #c9963a;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes inkSpreads {
+  0% { clip-path: circle(0% at 50% 50%); opacity: 0; }
+  100% { clip-path: circle(100% at 50% 50%); opacity: 1; }
+}
+
+.price-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  font-family: var(--font-display);
+  color: #e8cf8d;
+}
+.price-tag .symbol {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+.price-tag .amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.badge-hot {
+  background: linear-gradient(135deg, #c41e3a, #a0182e);
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+  animation: pulseGold 2s ease-in-out infinite;
+}
+
+@keyframes baguaSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.bagua-spin {
+  animation: baguaSpin 20s linear infinite;
+}
