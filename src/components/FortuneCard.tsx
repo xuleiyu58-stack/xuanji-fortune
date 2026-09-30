@@ -22,7 +22,7 @@ export default function FortuneCard({ icon, title, subtitle, price, tag, href, d
       transition={{ duration: 0.6, delay }}
     >
       <Link href={href} className="block">
-        <div className="mystic-card rounded-lg p-6 h-full flex flex-col items-center text-center group cursor-pointer relative overflow-hidden">
+        <div className="mystic-card fortune-card rounded-lg p-6 h-full flex flex-col items-center text-center group cursor-pointer relative overflow-hidden">
           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
             style={{
               background: "radial-gradient(circle at 50% 0%, rgba(201, 150, 58, 0.08) 0%, transparent 60%)",
@@ -50,9 +50,10 @@ export default function FortuneCard({ icon, title, subtitle, price, tag, href, d
 
           <div className="mt-auto relative z-10">
             <div className="price-tag">
-              <span className="symbol">¥</span>
+              {price !== "免费" && <span className="symbol">¥</span>}
               <span className="amount">{price}</span>
             </div>
+            <span className="card-action">开始测算 <span aria-hidden="true">→</span></span>
           </div>
         </div>
       </Link>

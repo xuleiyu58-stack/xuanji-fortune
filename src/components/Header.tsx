@@ -27,7 +27,7 @@ export default function Header() {
     <>
       <header className="fixed top-0 left-0 right-0 z-50 glass">
         <nav className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
+          <Link href="/" className="brand-mark flex items-center gap-2 group shrink-0" aria-label="玄机首页">
             <span className="text-2xl" style={{ fontFamily: "'Ma Shan Zheng', cursive" }}>玄</span>
             <span className="text-lg font-semibold text-gold hidden sm:inline" style={{ fontFamily: "'Noto Serif SC', serif" }}>机</span>
           </Link>
@@ -41,7 +41,7 @@ export default function Header() {
           <div className="flex items-center gap-3">
             {member && <Link href="/member" className="hidden sm:inline text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">👑 会员</Link>}
             <button onClick={() => setHistoryOpen(true)} className="relative text-paper-100/50 hover:text-gold-300 transition-colors text-sm" title="测算历史">📜{hasReadings && <span className="absolute -top-1 -right-1 w-2 h-2 bg-vermillion-400 rounded-full" />}</button>
-            <Link href="/fortune/daily" className="hidden md:inline-block btn-mystic !py-2 !px-5 !text-sm">开始测算</Link>
+            <Link href="/fortune/daily" className="hidden md:inline-block btn-mystic !py-2 !px-5 !text-sm">今日运势</Link>
           </div>
           <button className="md:hidden flex flex-col gap-1.5 p-2" onClick={() => setOpen(!open)} aria-label="Menu">
             <motion.span animate={open ? { rotate: 45, y: 6 } : { rotate: 0, y: 0 }} className="w-5 h-0.5 bg-gold-300 block" />

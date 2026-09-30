@@ -35,29 +35,32 @@ export default function Home() {
     <div className="min-h-screen relative">
       <Particles /><Header /><div className="ink-bg" />
 
-      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 pt-16">
-        <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 0.06, scale: 1 }} transition={{ duration: 2, ease: "easeOut" }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <svg width="500" height="500" viewBox="0 0 100 100" className="bagua-spin">
-            <circle cx="50" cy="50" r="48" fill="none" stroke="#c9963a" strokeWidth="0.3" />
-            <circle cx="50" cy="50" r="24" fill="none" stroke="#c9963a" strokeWidth="0.3" />
-            <path d="M50 2 A48 48 0 0 1 50 98 A24 24 0 0 0 50 2" fill="rgba(201,150,58,0.15)" />
-            <circle cx="50" cy="26" r="5" fill="#c9963a" opacity="0.4" />
-            <circle cx="50" cy="74" r="5" fill="#c9963a" opacity="0.4" />
+      <section className="hero-stage relative z-10 min-h-screen flex flex-col items-center justify-center px-6 pt-20">
+        <motion.div initial={{ opacity: 0, scale: 0.88 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.4, ease: "easeOut" }} className="hero-constellation pointer-events-none" aria-hidden="true">
+          <svg viewBox="0 0 480 480" className="h-full w-full">
+            <circle cx="240" cy="240" r="205" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 10" />
+            <circle cx="240" cy="240" r="150" fill="none" stroke="currentColor" strokeWidth="1" opacity=".65" />
+            <circle cx="240" cy="240" r="82" fill="none" stroke="currentColor" strokeWidth="1" opacity=".75" />
+            <path d="M240 34v412M34 240h412M95 95l290 290M385 95L95 385" stroke="currentColor" strokeWidth=".6" opacity=".45" />
+            <path d="M240 157c46 0 83 37 83 83s-37 83-83 83-83-37-83-83 37-83 83-83Z" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="240" cy="240" r="11" fill="currentColor" opacity=".8" />
           </svg>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1, ease: "easeOut" }} className="text-center relative">
-          <h1 className="text-7xl sm:text-8xl md:text-9xl mb-4" style={{ fontFamily: "'Ma Shan Zheng', cursive" }}><span className="text-gold">玄机</span></h1>
-          <p className="text-paper-100/40 text-sm sm:text-base tracking-[0.3em] mb-8" style={{ fontFamily: "'Noto Serif SC', serif" }}>千年玄学智慧 · 人工智能解读</p>
-          <p className="text-paper-100/50 text-sm leading-relaxed max-w-md mx-auto mb-10">融合易经八卦、子平八字、塔罗占卜等东西方玄学体系<br />以 AI 之力，为你拨开命运迷雾</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="#modes" className="btn-primary">开始测算</Link>
-            <Link href="/fortune/daily" className="btn-mystic">免费体验今日运势</Link>
+        <motion.div initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: "easeOut" }} className="hero-content text-center relative">
+          <p className="hero-kicker">东方命理 · AI 解读 · 为当下而问</p>
+          <h1 className="hero-title" style={{ fontFamily: "'Ma Shan Zheng', cursive" }}><span className="text-gold">玄机</span></h1>
+          <div className="hero-rule"><span>知其所来，明其所往</span></div>
+          <p className="hero-lede">不替你决定命运，只为你把此刻的困惑<br className="hidden sm:block" />梳理成一份可以理解的指引。</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/fortune/daily" aria-label="前往今日运势" className="btn-primary">立即看今日运势 <span aria-hidden="true">→</span></Link>
+            <Link href="#modes" className="btn-mystic">探索全部测算</Link>
           </div>
+          <p className="hero-note">今日运势与灵签可免费体验 · 无需注册</p>
         </motion.div>
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2, duration: 0.8 }} className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-          <span className="text-paper-100/20 text-xs tracking-widest">向下探索</span>
+          <span className="text-paper-100/20 text-xs tracking-widest">选择一种方式，开始提问</span>
           <div className="w-4 h-6 border border-gold-300/20 rounded-full flex justify-center"><motion.div className="w-1 h-1.5 bg-gold-400/50 rounded-full mt-1" animate={{ y: [0, 4, 0] }} transition={{ duration: 2, repeat: Infinity }} /></div>
         </motion.div>
       </section>
@@ -65,8 +68,9 @@ export default function Home() {
       <section id="modes" className="relative z-10 py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>择一法，窥天机</h2>
-            <p className="text-paper-100/40 text-sm tracking-wider">五种测算方式 · 两款永久免费 · 总有一款适合你的困惑</p>
+            <p className="section-eyebrow">从一个问题开始</p>
+            <h2 className="text-3xl md:text-4xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>择一法，看见心中答案</h2>
+            <p className="text-paper-100/45 text-sm tracking-wider">五种方式，各有一问。先选最贴近你此刻心事的那一种。</p>
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{FORTUNE_MODES.map((mode) => (<FortuneCard key={mode.title} {...mode} />))}</div>
         </div>
