@@ -14,6 +14,8 @@ interface Props {
 
 export default function PaymentModal({ open, onClose, title, price, onConfirm }: Props) {
   const [step, setStep] = useState<"pay" | "confirm">("pay");
+  // 收款码是站长的外部资源，缺失时给出可读的占位，而不是一个碎图标
+  const [qrFailed, setQrFailed] = useState(false);
 
   const handleClose = () => {
     setStep("pay");
@@ -56,13 +58,26 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
 
                 <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
                   <p className="text-gray-700 text-xs mb-2 font-medium">微信扫码支付</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/qrcode.jpg"
-                    alt="微信收款码"
-                    className="w-44 h-44 object-contain rounded"
-                  />
-                  <p className="text-gray-400 text-[10px] mt-1">长按识别或截图扫描</p>
+                  {qrFailed ? (
+                    <div className="w-44 h-44 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
+                      <span className="text-gray-400 text-xs leading-relaxed">
+                        收款码暂未就绪
+                        <br />
+                        请稍后再试
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/qrcode.jpg"
+                        alt="微信收款码"
+                        className="w-44 h-44 object-contain rounded"
+                        onError={() => setQrFailed(true)}
+                      />
+                      <p className="text-gray-400 text-[10px] mt-1">长按识别或截图扫描</p>
+                    </>
+                  )}
                 </div>
 
                 <p className="text-paper-100/40 text-xs mb-2">
