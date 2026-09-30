@@ -333,6 +333,15 @@ test("界面文件里不得出现写死的价格数字", () => {
   }
 });
 
+test("价格数字不得直接写进 amount 容器", () => {
+  // 单独一条：¥ 与数字可能被拆进相邻的两个 span（首页"随缘"卡原本就是这种写法），
+  // 上面的 ¥+数字 规则抓不到，所以这里直接盯 amount 容器的内容。
+  for (const rel of TARGETS) {
+    const hit = read(rel).match(/className="amount"[^>]*>\s*\d/);
+    assert.equal(hit, null, `${rel} 的 amount 容器里仍是写死的数字：${hit?.[0] ?? ""}`);
+  }
+});
+
 test("不得再向 FortuneForm 传 price 属性", () => {
   for (const rel of TARGETS.filter((f) => f.startsWith("app/fortune/"))) {
     assert.doesNotMatch(read(rel), /price=/, `${rel} 仍在传 price`);
@@ -361,7 +370,8 @@ const SUBTITLES: Record<Mode, string> = {
   love: "月老牵线，命盘合婚。看两人前世今生缘分，获相处锦囊",
 };
 
-const PRODUCTS = (Object.keys(MODES) as Mode[]).map((mode, i) => ({
+// 沿用原文件已有的标识符名 FORTUNE_MODES —— 它在第 75 行的渲染处被引用，改名要多动一处
+const FORTUNE_MODES = (Object.keys(MODES) as Mode[]).map((mode, i) => ({
   mode,
   icon: MODES[mode].icon,
   title: MODES[mode].title,
@@ -395,6 +405,40 @@ const yearPlan = MEMBER_PLANS[1];
 
 > 说明：原首页里"热门"标签和产品顺序按 `Object.keys(MODES)` 的插入顺序（daily、oracle、bazi、tarot、love）生成。若需保留原顺序（daily、oracle、bazi、tarot、love）无需额外处理 —— 二者一致。
 
+**还要改首页另外两处，这两处上一版计划漏了：**
+
+**(a) 102 行的第三张卡"随缘"，价格写死为 `3.8`：**
+
+```tsx
+<div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">3.8</span><span className="text-xs text-paper-100/40">起</span></div>
+```
+
+这张卡展示的是"单次最低价"，应当从付费模式里取最小值，而不是写死。在文件顶部加：
+
+```tsx
+// 单次测算最低价，用于"随缘"卡片的"¥X 起"
+const PAID_PRICES = (Object.keys(MODES) as Mode[])
+  .map((m) => MODES[m].price)
+  .filter((p) => p > 0);
+const MIN_PRICE = formatPrice(Math.min(...PAID_PRICES));
+```
+
+然后把那一行改成：
+
+```tsx
+<div className="price-tag mb-4 justify-center"><span className="symbol">¥</span><span className="amount">{MIN_PRICE}</span><span className="text-xs text-paper-100/40">起</span></div>
+```
+
+**(b) 89 行的免费额度文案与实现不符：**
+
+原文写 `每日各 5 次`，但 `FREE_DAILY_QUOTA` 是 3，且 QuotaBanner 也显示 `/3`。首页承诺 5 次、实际只给 3 次 —— 这是又一处宣传与实现不符。改成读配置，并修正"各"（额度是全模式合计，不是每种各算）：
+
+```tsx
+<li>每日共 {FREE_DAILY_QUOTA} 次</li>
+```
+
+（`FREE_DAILY_QUOTA` 需要加进 `@/lib/pricing` 的 import。）
+
 - [ ] **Step 4: 改 `src/app/member/page.tsx`**
 
 15 行原有的终身卡整行删除。13-15 行的套餐数组改为：
@@ -407,9 +451,12 @@ const PLANS = MEMBER_PLANS.map((p) => ({
   duration: `${p.days}天`,
   icon: p.id === "member_year" ? "👑" : "🌙",
   recommend: p.id === "member_year",
-  desc: p.id === "member_year" ? "日均不到 ¥0.2，超值之选" : "按月订阅，灵活便捷",
+  // 文案里不能出现具体金额 —— 否则会被本任务的 no-hardcoded-prices 测试判为硬编码价格
+  desc: p.id === "member_year" ? "全年畅享，超值之选" : "按月订阅，灵活便捷",
 }));
 ```
+
+> 原文件里年卡的描述是 `"日均 ¥0.24，超值之选"`，含具体金额。它必须改掉：本任务的测试用 `¥` 后跟数字来识别硬编码价格，留着它测试会红。单价折算属于派生展示，本阶段不引入。
 
 把 75 行价格显示与 89 行 `PaymentModal` 的 `price` 都改为 `formatPrice(plan.price)` / `formatPrice(selectedPlan.price)`。
 
