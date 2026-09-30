@@ -15,6 +15,7 @@ import {
   type OracleDraw,
   type OracleReading,
 } from "./oracle";
+import { matchCharts, loveToPrompt, type LoveMatch } from "./love";
 
 // 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
 // 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
@@ -72,17 +73,24 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 - 不做健康、疾病、生死的断言，不推荐投资标的
 - 开头加上"命理之说，信则有不信则无，仅供参考娱乐"`,
 
-  love: `你是一位精通姻缘命理的月老传人，擅长合婚算命。你的风格：温暖细腻，既有命理依据又充满人情味。
+  love: `你是一位精通合婚的命理师。风格温暖但不含糊 —— 既讲命理依据，也讲人情。
 
-用户会提供两人的出生信息。请生成以下内容：
-1. 【命盘匹配】分析两人八字五行匹配度
-2. 【性格互补】两人性格的互补与冲突分析
-3. 【缘分深浅】前世今生的缘分解读
-4. 【相处建议】给双方的实用相处建议（3条）
-5. 【未来发展】关系走向展望
-6. 【月老寄语】对这段关系的祝福与提醒
+两人的命盘与合婚评分**已由程序排定**（含生肖关系、日主关系、五行互补，以及每一项的加减分），你不必也不得自行推算或改动分数。请据此解读这段关系。
 
-请用温暖但客观的语气，既不过分吹捧也不过分唱衰。`,
+请按以下结构输出：
+1. 【缘分深浅】依生肖与日主关系，说清这段缘分的质地
+2. 【性格互补】两人的相处模式、互补之处与容易起摩擦的地方
+3. 【五行启示】五行的互补或缺损对相处意味着什么，给具体做法
+4. 【相处建议】三条可落地的建议
+5. 【未来走向】结合两人大运，说明关系的发展节奏
+6. 【月老寄语】祝福与提醒
+
+要求：
+- 不要复述四柱与分数（盘与依据已单独呈现给用户），直接给解读
+- **分数高低不等于关系好坏**：低分要说清"难在哪里、怎么应对"，不做劝分或劝合的断言
+- 不涉健康、疾病、生死，不预测具体事件
+- 语气温暖但客观，既不过分吹捧也不过分唱衰
+- 开头加上"命理之说，信则有不信则无，仅供参考娱乐"`,
 
   tarot: `你是一位精通塔罗的占卜师，能把西方象征体系讲得让人听得懂，不故弄玄虚。
 
@@ -138,6 +146,8 @@ export interface FortuneResult {
   daily?: DailyReading;
   /** 灵签模式附带摇出的签与解析出的签文 */
   oracle?: OracleReading;
+  /** 姻缘模式附带两张命盘与合婚结果 */
+  love?: { a: BaziChart; b: BaziChart; match: LoveMatch };
 }
 
 export async function getFortune(
@@ -151,6 +161,7 @@ export async function getFortune(
   let tarot: TarotDraw | undefined;
   let dailyHex: Hexagram | undefined;
   let oracleDraw: OracleDraw | undefined;
+  let love: { a: BaziChart; b: BaziChart; match: LoveMatch } | undefined;
 
   switch (mode) {
     case "daily": {
@@ -175,11 +186,28 @@ export async function getFortune(
       userMessage = `以下命盘已由程序精确排定，请直接解读，不要自行推算或改动：\n\n${chartToPrompt(built)}`;
       break;
     }
-    case "love":
-      userMessage = `请分析以下两人的姻缘：
-甲方：${userInput.person1 || "未提供"}
-乙方：${userInput.person2 || "未提供"}`;
+    case "love": {
+      // 两张盘都排好、合婚分算好，模型只解读 —— 与八同一个原则
+      const a = buildBaziChart({
+        birthDate: userInput.person1Date ?? "",
+        birthTime: userInput.person1Time ?? "",
+        gender: userInput.person1Gender ?? "",
+      });
+      const b = buildBaziChart({
+        birthDate: userInput.person2Date ?? "",
+        birthTime: userInput.person2Time ?? "",
+        gender: userInput.person2Gender ?? "",
+      });
+      if (!a || !b) {
+        return { success: false, error: "两人的出生信息不完整，无法排盘，请返回检查日期与时辰" };
+      }
+      const m = matchCharts(a, b);
+      love = { a, b, match: m };
+      userMessage =
+        `${loveToPrompt(m)}\n\n两人命盘（均已排定，不必重算）：\n【你】\n${chartToPrompt(a)}\n\n【TA】\n${chartToPrompt(b)}\n\n` +
+        `关系状态：${userInput.relationship || "未说明"}\n最关心的问题：${userInput.question || "未说明"}`;
       break;
+    }
     case "tarot": {
       // 牌由代码抽，不让模型"挑" —— 否则它倾向挑好解的牌，且每次给的牌阵高度相似
       const drawn = drawTarot();
@@ -217,7 +245,7 @@ export async function getFortune(
     const oracle =
       oracleDraw && content ? (parseOracle(content, oracleDraw) ?? undefined) : undefined;
 
-    return { success: true, content, chart, tarot, daily, oracle };
+    return { success: true, content, chart, tarot, daily, oracle, love };
   } catch (error) {
     console.error("AI API error:", error);
 

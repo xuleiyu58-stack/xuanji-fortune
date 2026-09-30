@@ -8,7 +8,7 @@ import type { BaziChart as Chart, WuXing } from "@/lib/bazi";
  * 八字的价值一半在盘、一半在解。盘是排出来的死数据，就该用表格和条形老老实实呈现；
  * 五行用色是传统的（木青火赤土黄金白水黑），这里做了去饱和处理以便落在墨色底上。
  */
-const ELEMENT_COLOR: Record<WuXing, string> = {
+export const ELEMENT_COLOR: Record<WuXing, string> = {
   木: "#7fb08e",
   火: "#c9745a",
   土: "#c2a061",

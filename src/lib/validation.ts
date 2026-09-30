@@ -7,7 +7,12 @@ export const MODE_FIELDS: Record<string, readonly string[]> = {
   oracle: ["concern"],
   bazi: ["birthDate", "birthTime", "gender"],
   tarot: ["question"],
-  love: ["person1", "person2"],
+  // 合婚要排两张盘，故两个人的日期/时辰/性别都要收，自由文本解析太脆已弃用
+  love: [
+    "person1Date", "person1Time", "person1Gender",
+    "person2Date", "person2Time", "person2Gender",
+    "relationship", "question",
+  ],
 };
 
 const LONG_FIELDS: readonly string[] = ["question", "concern"];

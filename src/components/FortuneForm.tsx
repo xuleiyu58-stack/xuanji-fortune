@@ -11,6 +11,7 @@ import BaziChart from "./BaziChart";
 import TarotSpread from "./TarotSpread";
 import DailyReadingPanel from "./DailyReading";
 import OracleSlip from "./OracleSlip";
+import LoveMatchPanel from "./LoveMatch";
 import { renderFortuneHtml } from "@/lib/sanitize";
 import { stripStructuredSections } from "@/lib/daily";
 // 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
@@ -18,6 +19,7 @@ import type { BaziChart as BaziChartData } from "@/lib/bazi";
 import type { TarotDraw } from "@/lib/tarot";
 import type { DailyReading as DailyReadingData } from "@/lib/daily";
 import type { OracleReading } from "@/lib/oracle";
+import type { LoveMatch as LoveMatchData } from "@/lib/love";
 
 interface Field {
   name: string;
@@ -25,7 +27,7 @@ interface Field {
   type: "text" | "date" | "time" | "select" | "textarea";
   placeholder?: string;
   required?: boolean;
-  options?: { value: string; label: string }[];
+  options?: readonly { value: string; label: string }[];
 }
 
 interface Props {
@@ -49,6 +51,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
   const [tarot, setTarot] = useState<TarotDraw | null>(null);
   const [daily, setDaily] = useState<DailyReadingData | null>(null);
   const [oracle, setOracle] = useState<OracleReading | null>(null);
+  const [love, setLove] = useState<{ a: BaziChartData; b: BaziChartData; match: LoveMatchData } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -74,6 +77,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
         if (data.tarot) setTarot(data.tarot);
         if (data.daily) setDaily(data.daily);
         if (data.oracle) setOracle(data.oracle);
+        if (data.love) setLove(data.love);
         setMember(isMember());
         setQuota(getFreeQuota());
       } else { setError(data.error || "测算失败"); }
@@ -139,6 +143,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
           {tarot && <TarotSpread draw={tarot} />}
           {daily && <DailyReadingPanel reading={daily} />}
           {oracle && <OracleSlip reading={oracle} />}
+          {love && <LoveMatchPanel chartA={love.a} chartB={love.b} match={love.match} />}
           {/* 灵签的签文/典故/解曰/开示已全部由上方面板承载，正文块整个不渲染，
               否则同一份内容会出现两遍 */}
           {!oracle && (
@@ -149,7 +154,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
             </div>
           )}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => { setResult(null); setChart(null); setTarot(null); setDaily(null); setOracle(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
+            <button onClick={() => { setResult(null); setChart(null); setTarot(null); setDaily(null); setOracle(null); setLove(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
             <button onClick={handleCopyResult} className={`btn-primary ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制结果 · 分享好友"}</button>
           </div>
         </motion.div>

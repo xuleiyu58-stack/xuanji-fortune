@@ -4,22 +4,18 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import FortuneForm from "@/components/FortuneForm";
+import { TIME_OPTIONS, GENDER_OPTIONS } from "@/lib/choices";
 
+// 合婚要排两张盘，而排盘需要准确的日期、时辰、性别。
+// 原先两人各一个自由文本框（"1995年6月15日 午时 女"），靠解析这种输入太脆 ——
+// 一旦有人写成"95年六月十五"，盘就排错了，而且是静默排错。改为结构化字段。
 const FIELDS = [
-  {
-    name: "person1",
-    label: "你的出生信息",
-    type: "text" as const,
-    required: true,
-    placeholder: "例如：1995年6月15日 午时 女",
-  },
-  {
-    name: "person2",
-    label: "TA 的出生信息",
-    type: "text" as const,
-    required: true,
-    placeholder: "例如：1993年10月20日 申时 男",
-  },
+  { name: "person1Date", label: "你的出生日期", type: "date" as const, required: true },
+  { name: "person1Time", label: "你的出生时辰", type: "select" as const, required: true, options: TIME_OPTIONS },
+  { name: "person1Gender", label: "你的性别", type: "select" as const, required: true, options: GENDER_OPTIONS },
+  { name: "person2Date", label: "TA 的出生日期", type: "date" as const, required: true },
+  { name: "person2Time", label: "TA 的出生时辰", type: "select" as const, required: true, options: TIME_OPTIONS },
+  { name: "person2Gender", label: "TA 的性别", type: "select" as const, required: true, options: GENDER_OPTIONS },
   {
     name: "relationship",
     label: "你们的关系",
