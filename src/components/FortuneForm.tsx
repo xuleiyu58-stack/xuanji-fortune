@@ -9,10 +9,13 @@ import { MODES, MEMBER_PLANS, formatPrice, FREE_DAILY_QUOTA, type Mode } from "@
 import Glyph, { MODE_TRIGRAM } from "./Glyph";
 import BaziChart from "./BaziChart";
 import TarotSpread from "./TarotSpread";
+import DailyReadingPanel from "./DailyReading";
 import { renderFortuneHtml } from "@/lib/sanitize";
+import { stripStructuredSections } from "@/lib/daily";
 // 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
 import type { BaziChart as BaziChartData } from "@/lib/bazi";
 import type { TarotDraw } from "@/lib/tarot";
+import type { DailyReading as DailyReadingData } from "@/lib/daily";
 
 interface Field {
   name: string;
@@ -39,6 +42,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
   const [result, setResult] = useState<string | null>(null);
   const [chart, setChart] = useState<BaziChartData | null>(null);
   const [tarot, setTarot] = useState<TarotDraw | null>(null);
+  const [daily, setDaily] = useState<DailyReadingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -62,6 +66,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
         saveReading({ mode, title, result: data.content, input: formData });
         if (data.chart) setChart(data.chart);
         if (data.tarot) setTarot(data.tarot);
+        if (data.daily) setDaily(data.daily);
         setMember(isMember());
         setQuota(getFreeQuota());
       } else { setError(data.error || "测算失败"); }
@@ -125,12 +130,14 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
           {/* 先给盘，再给解。盘是排出来的，看得到；解是推出来的，读得懂。 */}
           {chart && <BaziChart chart={chart} />}
           {tarot && <TarotSpread draw={tarot} />}
+          {daily && <DailyReadingPanel reading={daily} />}
           <div className="mystic-card rounded-lg p-8 border-gold-glow">
             <h3 className="text-lg text-gold mb-5" style={{ fontFamily: "'Noto Serif SC', serif" }}>大师解读</h3>
-            <div className="fortune-text text-paper-100/80 text-sm leading-loose whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderFortuneHtml(result) }} />
+            {/* 宜忌已由上方面板结构化呈现，正文里剥掉，避免同一份内容出现两遍 */}
+            <div className="fortune-text text-paper-100/80 text-sm leading-loose whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderFortuneHtml(daily ? stripStructuredSections(result) : result) }} />
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => { setResult(null); setChart(null); setTarot(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
+            <button onClick={() => { setResult(null); setChart(null); setTarot(null); setDaily(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
             <button onClick={handleCopyResult} className={`btn-primary ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制结果 · 分享好友"}</button>
           </div>
         </motion.div>

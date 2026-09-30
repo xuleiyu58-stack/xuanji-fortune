@@ -1,6 +1,13 @@
 import OpenAI from "openai";
 import { buildBaziChart, chartToPrompt, type BaziChart } from "./bazi";
 import { drawTarot, tarotToPrompt, type TarotDraw } from "./tarot";
+import {
+  castDailyHexagram,
+  hexagramToPrompt,
+  parseDailyReading,
+  type DailyReading,
+  type Hexagram,
+} from "./daily";
 
 // 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
 // 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
@@ -17,17 +24,28 @@ function client(): OpenAI {
 }
 
 const SYSTEM_PROMPTS: Record<string, string> = {
-  daily: `你是一位精通中国传统命理的玄学大师，拥有三十年的算命经验。你的风格是：儒雅深邃，引经据典，既有易理根基又通俗易懂。
+  daily: `你是一位精通易经与五行的命理师，风格儒雅但不故弄玄虚。
 
-请为用户生成今日运势解读，必须包含以下结构：
-1. 【今日卦象】给出一个今日对应的卦名，并简要解释
-2. 【整体运势】用一段话概述今日运势吉凶（50字以内）
-3. 【宜】列出3件今日适宜做的事
-4. 【忌】列出3件今日不宜做的事
-5. 【幸运指南】幸运颜色、幸运数字、幸运方位
-6. 【大师寄语】一句人生感悟或古语，给用户鼓励或提醒
+今日的卦**已由程序起定**，你不必也不得另行起卦或改动卦名。请依这一卦，结合用户填写的当下心情与关注方向，给出一份可读的今日指引。
 
-请确保回复有仪式感，使用一些恰当的易经术语但不要晦涩。`,
+**必须严格按下面的格式输出**，每个方括号标记独占一行，不要增删标记，不要使用 Markdown 井号：
+
+【卦象解读】
+（一段话说明今日气机，80 字内）
+
+【宜】三件事，用顿号分隔
+【忌】三件事，用顿号分隔
+【幸运指南】颜色：X｜数字：N｜方位：Y
+
+【大师寄语】
+（一句话鼓励或提醒）
+
+要求：
+- 【宜】【忌】各恰好三项，每项 2-6 个字（如"签约""动土""远行"），切忌写成长句
+- 方位只能从这八个里取：东、东南、南、西南、西、西北、北、东北
+- 颜色用单字或双字（青、赤、黄、白、黑、紫、金、橙、蓝）
+- 不做健康、疾病、生死的断言，不推荐投资标的
+- 开头单独一行加上"命理之说，信则有不信则无，仅供参考娱乐"`,
 
   bazi: `你是一位精通子平八字与五行生克的命理师。你的风格：以五行生克制化说理，旁征博引，不故弄玄虚。
 
@@ -96,6 +114,8 @@ export interface FortuneResult {
   chart?: BaziChart;
   /** 塔罗模式随结果附带抽定的三张牌 */
   tarot?: TarotDraw;
+  /** 运势模式附带起好的卦与解析出的宜忌 —— 解析失败时为 undefined，界面退回只展示原文 */
+  daily?: DailyReading;
 }
 
 export async function getFortune(
@@ -107,11 +127,17 @@ export async function getFortune(
   let userMessage = "";
   let chart: BaziChart | undefined;
   let tarot: TarotDraw | undefined;
+  let dailyHex: Hexagram | undefined;
 
   switch (mode) {
-    case "daily":
-      userMessage = "请为我生成今日运势解读。";
+    case "daily": {
+      // 起卦同样是确定性的，不让模型"编一个卦名" —— 同一天全站同卦
+      dailyHex = castDailyHexagram();
+      userMessage =
+        `今日卦象已由程序起定，请依此解读，不要另行起卦：\n\n${hexagramToPrompt(dailyHex)}\n\n` +
+        `用户当下心情：${userInput.feeling || "未说明"}\n用户关注方向：${userInput.focus || "未说明"}`;
       break;
+    }
     case "bazi": {
       // 排盘是确定性计算，交给模型等于让它编；这里先算准，再让它只做解读
       const built = buildBaziChart({
@@ -157,12 +183,13 @@ export async function getFortune(
       max_tokens: 2000,
     });
 
-    return {
-      success: true,
-      content: response.choices[0].message.content ?? undefined,
-      chart,
-      tarot,
-    };
+    const content = response.choices[0].message.content ?? undefined;
+
+    // 宜忌的解析是尽力而为：模型没按格式走就返回 undefined，界面退回只展示原文，不会白屏
+    const daily =
+      dailyHex && content ? (parseDailyReading(content, dailyHex) ?? undefined) : undefined;
+
+    return { success: true, content, chart, tarot, daily };
   } catch (error) {
     console.error("AI API error:", error);
 
