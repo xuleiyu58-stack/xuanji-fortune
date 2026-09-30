@@ -69,6 +69,8 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
     try {
       const res = await fetch("/api/fortune", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, ...formData }) });
       const data = await res.json();
+      // 剩余次数以服务端为准 —— 限流的真实依据在那边，本地计数只是估算
+      if (typeof data.remaining === "number") setQuota(data.remaining);
       if (data.success) {
         setResult(data.content);
         // 不存图标 —— 记录里的卦象由 mode 直接推出，冗余存储只会两处漂移
@@ -104,7 +106,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
 
   return (
     <div className="max-w-3xl mx-auto">
-      {isFree && !result && <div className="mb-6"><QuotaBanner /></div>}
+      {isFree && !result && <div className="mb-6"><QuotaBanner remaining={quota} /></div>}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
         <div className="flex justify-center mb-5 text-gold-400/80"><Glyph trigram={trigram} size={54} /></div>
         <h1 className="text-3xl md:text-4xl text-gold mb-3" style={{ fontFamily: "'Noto Serif SC', serif" }}>{title}</h1>

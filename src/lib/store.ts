@@ -95,33 +95,7 @@ export function clearHistory() {
   localStorage.removeItem(KEYS.HISTORY);
 }
 
-export function getReferralCode(): string {
-  if (typeof window === "undefined") return "";
-  let code = localStorage.getItem("xuanji_ref_code");
-  if (!code) {
-    code = "XJ" + Date.now().toString(36).toUpperCase().slice(-6);
-    localStorage.setItem("xuanji_ref_code", code);
-  }
-  return code;
-}
-
-export function getReferralCount(): number {
-  if (typeof window === "undefined") return 0;
-  return parseInt(localStorage.getItem("xuanji_ref_count") || "0", 10);
-}
-
-export function addReferral() {
-  const count = getReferralCount() + 1;
-  localStorage.setItem("xuanji_ref_count", String(count));
-  if (count % 3 === 0) {
-    const currentExpiry = parseInt(
-      localStorage.getItem("xuanji_member_expiry") || "0",
-      10
-    );
-    const newExpiry = Math.max(currentExpiry, Date.now()) + 86400000;
-    localStorage.setItem("xuanji_member_expiry", String(newExpiry));
-    localStorage.setItem(KEYS.MEMBER, "true");
-    return true;
-  }
-  return false;
-}
+// 邀请裂变已移除。
+// 原实现是本机计数器：自己点三次就给自己发会员，且不校验被邀请人是谁 ——
+// 那是一个兑不了的承诺，比没有更伤用户。等有了服务端账号体系再重新设计。
+// 一并删掉的还有 page.tsx 里读取 ?ref= 的副作用与界面上的邀请按钮。

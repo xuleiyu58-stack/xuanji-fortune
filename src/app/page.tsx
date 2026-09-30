@@ -1,13 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import FortuneCard from "@/components/FortuneCard";
 import { MODE_TRIGRAM, Seal } from "@/components/Glyph";
-import { addReferral } from "@/lib/store";
 import { MODES, MEMBER_PLANS, FREE_DAILY_QUOTA, formatPrice, type Mode } from "@/lib/pricing";
 import Link from "next/link";
 
@@ -73,11 +71,6 @@ const FAQ = [
 ];
 
 export default function Home() {
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get("ref");
-    if (ref) addReferral();
-  }, []);
 
   return (
     <div className="min-h-screen relative">
