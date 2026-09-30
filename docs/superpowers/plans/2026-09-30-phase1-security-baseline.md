@@ -12,7 +12,7 @@
 
 - Node 版本 ≥ 24（本机 v24.16.0）—— 依赖其原生 TypeScript 类型擦除能力
 - `package.json` 设 `"type": "module"`；已实测 `next build` 在此设置下通过
-- 设 `type: module` 的理由是**消除 `MODULE_TYPELESS_PACKAGE_JSON` 警告、避免多余的重解析开销、让模块语义确定**，而不是"否则测试跑不起来"。本项目实测：不加它测试同样全绿（Node 24 会探测模块语法并自动按 ESM 重解析），只是输出不干净
+- 设 `type: module` 的理由是**消除 `MODULE_TYPELESS_PACKAGE_JSON` 警告、避免多余的重解析开销、让模块语义确定**，而不是"否则跑不起来"。三种情形已实测：① 最近处无 `package.json` → 测试失败；② `package.json` 写 `"type": "commonjs"` → 测试失败；③ 有 `package.json` 但无 `type` 字段 → 通过，只吐警告（本仓库属此）。所以它是"输出干净与语义确定"的问题，不是"能不能跑"的问题
 - **测试脚本必须是裸 `node --test`**。Node 24 不再把位置参数当作递归搜索的目录，写 `node --test tests/` 会以 `MODULE_NOT_FOUND` 硬失败（已实测）
 - **原生类型擦除的三条限制**，后续任务的测试写法必须遵守：相对导入必须写显式 `.ts` 扩展名；不认 `@/*` 别名；无法 `import` `.tsx`。这三条已被下面的设计规避 —— 纯函数模块零依赖、测试只做相对路径导入、需要检查 `.tsx` 时按文本读取而非导入
 - **被单元测试直接引入的模块必须是零 import**（`pricing.ts` / `validation.ts` / `quota-policy.ts` / `sanitize.ts`）；配置一律作为函数参数注入
@@ -89,7 +89,9 @@ To eliminate this warning, add "type": "module" to .../package.json
 
 > **这一步不会报错。** Node 24 的模块语法探测会让它自动按 ESM 重新解析，所以测试照样全绿。要修的是那条警告和多余的重解析开销，不是错误。
 >
-> 已实测确认：只有"最近处根本没有 `package.json`"时才会退化成 `SyntaxError: Cannot use import statement outside a module`。本仓库有 `package.json`，所以碰不到那个错误 —— 不要为了凑出一个红色状态去改测试。
+> **三种情形已实测**：① 最近处完全没有 `package.json` → 失败；② `package.json` 显式写 `"type": "commonjs"` → 失败；③ 有 `package.json` 但没有 `type` 字段 → **通过**，只吐上面那条警告。本仓库属于第 ③ 种。所以这一步不会红，要修的是警告与重解析开销，不是错误 —— 不要为了凑出一个红色状态去改测试。
+>
+> （报错文案还取决于入口文件扩展名：入口是 `.ts` 时报 `Cannot use import statement outside a module`；入口是 `.mts`、被导入的 `.ts` 回退成 CJS 时报 `does not provide an export named`。两者都是失败，措辞不同。）
 
 - [ ] **Step 3: 修改 package.json**
 
