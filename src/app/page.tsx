@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import FortuneCard from "@/components/FortuneCard";
+import { MODE_TRIGRAM } from "@/components/Glyph";
 import { addReferral } from "@/lib/store";
 import { MODES, MEMBER_PLANS, FREE_DAILY_QUOTA, formatPrice, type Mode } from "@/lib/pricing";
 import Link from "next/link";
@@ -22,12 +23,13 @@ const SUBTITLES: Record<Mode, string> = {
 // 沿用原文件已有的标识符名 FORTUNE_MODES —— 它在渲染处被引用，改名要多动一处
 const FORTUNE_MODES = (Object.keys(MODES) as Mode[]).map((mode, i) => ({
   mode,
-  icon: MODES[mode].icon,
+  trigram: MODE_TRIGRAM[mode],
   title: MODES[mode].title,
   subtitle: SUBTITLES[mode],
   price: MODES[mode].price === 0 ? "免费" : formatPrice(MODES[mode].price),
-  // tag 是卡片右上角的角标：免费标"免费"，付费标"热门"
-  tag: MODES[mode].price === 0 ? "免费" : "热门",
+  // 只有八字带角标。给多数卡片都挂"热门"，等于没有推荐 ——
+  // 免费与否已经由价格区自己说明了，不需要再加一枚"免费"角标。
+  tag: mode === "bazi" ? "热门" : undefined,
   href: `/fortune/${mode}`,
   delay: 0.1 * (i + 1),
 }));

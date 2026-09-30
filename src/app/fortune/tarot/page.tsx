@@ -18,11 +18,11 @@ const FIELDS = [
     label: "问题类型",
     type: "select" as const,
     options: [
-      { value: "事业", label: "💼 事业工作" },
-      { value: "感情", label: "💕 感情人际" },
-      { value: "选择", label: "🎯 人生选择" },
-      { value: "成长", label: "🌱 个人成长" },
-      { value: "其他", label: "🔮 其他" },
+      { value: "事业", label: "事业工作" },
+      { value: "感情", label: "感情人际" },
+      { value: "选择", label: "人生选择" },
+      { value: "成长", label: "个人成长" },
+      { value: "其他", label: "其他" },
     ],
   },
 ];
@@ -37,7 +37,6 @@ export default function TarotPage() {
         <FortuneForm
           mode="tarot"
           title="AI 塔罗"
-          icon="🃏"
           description="三张牌阵，AI 解牌。融合东西方占卜智慧，用塔罗的古老智慧解答现代困惑。"
           fields={FIELDS}
         />

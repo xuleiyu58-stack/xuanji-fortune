@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { getHistory, deleteReading, clearHistory, Reading } from "@/lib/store";
 import { useState, useEffect } from "react";
+import Glyph from "./Glyph";
 
 interface Props {
   open: boolean;
@@ -64,7 +65,7 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
                   className="text-lg text-gold"
                   style={{ fontFamily: "'Noto Serif SC', serif" }}
                 >
-                  📜 测算历史
+                  测算历史
                 </h3>
                 <button
                   onClick={onClose}
@@ -76,8 +77,8 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
 
               {readings.length === 0 ? (
                 <div className="text-center py-12">
-                  <span className="text-4xl block mb-3">🔮</span>
-                  <p className="text-paper-100/30 text-sm">暂无测算记录</p>
+                  <div className="flex justify-center mb-4 text-gold-400/25"><Glyph trigram="qian" size={40} /></div>
+                  <p className="text-paper-100/45 text-sm">暂无测算记录</p>
                   <p className="text-paper-100/20 text-xs mt-1">
                     完成一次测算后，记录将显示在这里
                   </p>

@@ -8,12 +8,14 @@ import Particles from "@/components/Particles";
 import PaymentModal from "@/components/PaymentModal";
 import { isMember, setMember, setMemberExpiry } from "@/lib/store";
 import { MEMBER_PLANS, formatPrice } from "@/lib/pricing";
+import { Seal } from "@/components/Glyph";
 import Link from "next/link";
 
 const PLANS = MEMBER_PLANS.map((p) => ({
   ...p,
   duration: `${p.days}天`,
-  icon: p.id === "member_year" ? "👑" : "🌙",
+  // 印章取自套餐本身的时间单位，而不是通用的皇冠/月亮 emoji
+  seal: p.id === "member_year" ? "年" : "月",
   recommend: p.id === "member_year",
   // 文案里不能出现具体金额 —— 否则会被本任务的 no-hardcoded-prices 测试判为硬编码价格
   desc: p.id === "member_year" ? "全年畅享，超值之选" : "按月订阅，灵活便捷",
@@ -44,7 +46,7 @@ export default function MemberPage() {
         <main className="relative z-10 pt-24 pb-16 px-6">
           <div className="max-w-lg mx-auto text-center">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mystic-card rounded-xl p-12 border-gold-glow">
-              <span className="text-6xl block mb-6">👑</span>
+              <div className="flex justify-center mb-6"><Seal char="会" size={68} /></div>
               <h1 className="text-3xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>{purchased ? "功德圆满！" : "已是会员"}</h1>
               <p className="text-paper-100/50 text-sm mb-8 leading-relaxed">{purchased ? `您已成功开通${selectedPlan.name}，感谢您的信赖与布施。` : "您已是玄机会员，全模式无限次解读。"}</p>
               <div className="flex flex-col gap-3">
@@ -65,7 +67,7 @@ export default function MemberPage() {
       <main className="relative z-10 pt-24 pb-16 px-6">
         <div className="max-w-4xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
-            <span className="text-5xl block mb-4">👑</span>
+            <div className="flex justify-center mb-5"><Seal char="道" size={64} /></div>
             <h1 className="text-3xl md:text-5xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>问道 · 会员</h1>
             <p className="text-paper-100/50 text-sm max-w-md mx-auto leading-relaxed">解锁全部 AI 命理解读功能，无限次使用。<br />知命、改运、掌人生，从今天开始。</p>
           </motion.div>
@@ -73,7 +75,7 @@ export default function MemberPage() {
             {PLANS.map((plan, i) => (
               <motion.div key={plan.name} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} className={`rounded-xl p-8 text-center relative ${plan.recommend ? "border-gold-glow" : "mystic-card"}`} style={plan.recommend ? { background: "linear-gradient(135deg, rgba(201, 150, 58, 0.12) 0%, rgba(10, 10, 18, 0.95) 100%)", border: "1px solid rgba(201, 150, 58, 0.4)", boxShadow: "0 0 40px rgba(201, 150, 58, 0.1)" } : undefined}>
                 {plan.recommend && <span className="badge-hot absolute top-3 right-3">最值</span>}
-                <span className="text-3xl block mb-3">{plan.icon}</span>
+                <div className="flex justify-center mb-4"><Seal char={plan.seal} size={46} /></div>
                 <h3 className="text-xl text-gold mb-1" style={{ fontFamily: "'Noto Serif SC', serif" }}>{plan.name}</h3>
                 <p className="text-paper-100/30 text-xs mb-4">{plan.duration} · {plan.desc}</p>
                 <div className="price-tag mb-6 justify-center"><span className="symbol">¥</span><span className="amount">{formatPrice(plan.price)}</span></div>
@@ -84,7 +86,7 @@ export default function MemberPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mystic-card rounded-xl p-8 max-w-2xl mx-auto">
             <h3 className="text-lg text-gold mb-6 text-center" style={{ fontFamily: "'Noto Serif SC', serif" }}>会员专属权益</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[["♾️","全模式无限次解读"],["🧠","AI 深度命理分析"],["💬","专属大师寄语"],["🌟","优先体验新功能"],["📜","永久保存测算记录"]].map(([icon, text]) => (<div key={text} className="flex items-center gap-3"><span className="text-xl">{icon}</span><span className="text-paper-100/60 text-sm">{text}</span></div>))}
+              {["全模式无限次解读", "AI 深度命理分析", "专属大师寄语", "优先体验新功能", "永久保存测算记录"].map((text) => (<div key={text} className="flex items-start gap-3"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-gold-400/70 shrink-0" aria-hidden="true" /><span className="text-paper-100/65 text-sm">{text}</span></div>))}
             </div>
           </motion.div>
         </div>

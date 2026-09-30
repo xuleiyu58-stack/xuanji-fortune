@@ -5,7 +5,8 @@ import { motion } from "framer-motion";
 import PaymentModal from "./PaymentModal";
 import QuotaBanner from "./QuotaBanner";
 import { consumeFreeQuota, isMember, saveReading, getFreeQuota } from "@/lib/store";
-import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
+import { MODES, MEMBER_PLANS, formatPrice, FREE_DAILY_QUOTA, type Mode } from "@/lib/pricing";
+import Glyph, { MODE_TRIGRAM } from "./Glyph";
 
 interface Field {
   name: string;
@@ -19,14 +20,15 @@ interface Field {
 interface Props {
   mode: string;
   title: string;
-  icon: string;
   description: string;
   fields: Field[];
 }
 
-export default function FortuneForm({ mode, title, icon, description, fields }: Props) {
+export default function FortuneForm({ mode, title, description, fields }: Props) {
   const modeInfo = MODES[mode as Mode];
   const price = formatPrice(modeInfo.price);
+  // 卦象由 mode 直接推出，页面无需重复传
+  const trigram = MODE_TRIGRAM[mode] ?? "qian";
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,7 +36,7 @@ export default function FortuneForm({ mode, title, icon, description, fields }: 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [hasPaid, setHasPaid] = useState(false);
   const [member, setMember] = useState(false);
-  const [quota, setQuota] = useState(3);
+  const [quota, setQuota] = useState(FREE_DAILY_QUOTA);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => { setMember(isMember()); setQuota(getFreeQuota()); }, []);
@@ -77,11 +79,11 @@ export default function FortuneForm({ mode, title, icon, description, fields }: 
     <div className="max-w-3xl mx-auto">
       {mode === "daily" && !result && <div className="mb-6"><QuotaBanner /></div>}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
-        <span className="text-5xl block mb-4">{icon}</span>
+        <div className="flex justify-center mb-5 text-gold-400/80"><Glyph trigram={trigram} size={54} /></div>
         <h1 className="text-3xl md:text-4xl text-gold mb-3" style={{ fontFamily: "'Noto Serif SC', serif" }}>{title}</h1>
         <p className="text-paper-100/50 text-sm leading-relaxed max-w-md mx-auto">{description}</p>
         {mode !== "daily" && (<div className="price-tag mt-4 justify-center"><span className="symbol">¥</span><span className="amount">{price}</span><span className="text-xs text-paper-100/40">/次</span>{member && <span className="text-xs text-gold-400 bg-gold-400/10 rounded px-2 py-0.5 ml-2">会员免费</span>}</div>)}
-        {mode === "daily" && <span className="inline-block mt-4 text-xs text-jade-400 border border-jade-500/30 rounded px-3 py-1">每日3次免费体验</span>}
+        {mode === "daily" && <span className="inline-block mt-4 text-xs text-jade-400 border border-jade-500/30 rounded px-3 py-1">每日 {FREE_DAILY_QUOTA} 次免费体验</span>}
       </motion.div>
       <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={mode === "daily" ? "今日免费次数已用完" : title} price={formatPrice(MEMBER_PLANS[0].price)} onConfirm={handlePaymentConfirm} />
       {!result && (
@@ -98,7 +100,8 @@ export default function FortuneForm({ mode, title, icon, description, fields }: 
               )}
             </div>
           ))}
-          <button type="submit" disabled={loading} className={mode === "daily" && quota > 0 ? "btn-primary w-full" : mode === "daily" ? "btn-vermillion w-full" : "btn-vermillion w-full"}>
+          {/* 主操作恒为金色。红色留给真正的负向状态，不做"催你下一步"的颜色 */}
+          <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? (<span className="flex items-center justify-center gap-3"><span className="mystic-loader !w-5 !h-5" />天机推演中...</span>) : mode === "daily" && quota > 0 ? `免费获取今日运势（剩余 ${quota} 次）` : mode === "daily" ? `¥${formatPrice(MEMBER_PLANS[0].price)} 开通会员无限次` : member ? "会员免费测算" : `¥${price} 立即测算`}
           </button>
           {mode !== "daily" && !member && (<p className="text-center text-paper-100/20 text-xs">开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}/月，全模式无限次使用 · <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">立即开通</button></p>)}

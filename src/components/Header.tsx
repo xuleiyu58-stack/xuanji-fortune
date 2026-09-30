@@ -53,10 +53,10 @@ export default function Header() {
           {open && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden glass border-t border-gold-300/10 overflow-hidden">
               <div className="px-6 py-4 flex flex-col gap-3">
-                {[["🎯 今日运势","/fortune/daily"],["📅 八字命理","/fortune/bazi"],["💑 姻缘配对","/fortune/love"],["🃏 AI 塔罗","/fortune/tarot"],["🏮 灵签求签","/fortune/oracle"]].map(([l,h]) => <Link key={h} href={h} onClick={() => setOpen(false)} className="text-paper-100/80 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider">{l}</Link>)}
+                {[["今日运势","/fortune/daily"],["八字命理","/fortune/bazi"],["姻缘配对","/fortune/love"],["AI 塔罗","/fortune/tarot"],["灵签求签","/fortune/oracle"]].map(([l,h]) => <Link key={h} href={h} onClick={() => setOpen(false)} className="text-paper-100/80 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider">{l}</Link>)}
                 <div className="border-t border-gold-300/10 pt-3 mt-1">
-                  <button onClick={() => { setOpen(false); setHistoryOpen(true); }} className="text-paper-100/60 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider w-full text-left">📜 测算历史{hasReadings && <span className="ml-2 text-xs text-vermillion-400">●</span>}</button>
-                  {member && <Link href="/member" className="inline-block mt-2 text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">👑 会员专享</Link>}
+                  <button onClick={() => { setOpen(false); setHistoryOpen(true); }} className="text-paper-100/60 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider w-full text-left">测算历史{hasReadings && <span className="ml-2 text-xs text-vermillion-400">●</span>}</button>
+                  {member && <Link href="/member" className="inline-block mt-2 text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员专享</Link>}
                 </div>
               </div>
             </motion.div>

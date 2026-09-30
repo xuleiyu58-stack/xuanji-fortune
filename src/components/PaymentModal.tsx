@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import { Seal } from "./Glyph";
 
 interface Props {
   open: boolean;
@@ -41,7 +42,7 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
           >
             {step === "pay" ? (
               <>
-                <div className="text-3xl mb-3">🔮</div>
+                <div className="flex justify-center mb-4"><Seal char="缘" size={48} /></div>
                 <h3
                   className="text-xl text-gold mb-2"
                   style={{ fontFamily: "'Noto Serif SC', serif" }}
@@ -85,7 +86,7 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
               </>
             ) : (
               <>
-                <div className="text-5xl mb-4">✨</div>
+                <div className="flex justify-center mb-5"><Seal char="圆" size={64} /></div>
                 <h3
                   className="text-xl text-gold mb-3"
                   style={{ fontFamily: "'Noto Serif SC', serif" }}

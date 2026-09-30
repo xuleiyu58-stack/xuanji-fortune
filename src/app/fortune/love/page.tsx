@@ -25,11 +25,11 @@ const FIELDS = [
     label: "你们的关系",
     type: "select" as const,
     options: [
-      { value: "暧昧中", label: "💗 暧昧中" },
-      { value: "恋爱中", label: "💕 恋爱中" },
-      { value: "已婚", label: "💍 已婚" },
-      { value: "暗恋", label: "🌙 暗恋" },
-      { value: "想知道", label: "❓ 想知道是否合适" },
+      { value: "暧昧中", label: "暧昧中" },
+      { value: "恋爱中", label: "恋爱中" },
+      { value: "已婚", label: "已婚" },
+      { value: "暗恋", label: "暗恋" },
+      { value: "想知道", label: "想知道是否合适" },
     ],
   },
   {
@@ -50,7 +50,6 @@ export default function LovePage() {
         <FortuneForm
           mode="love"
           title="姻缘配对"
-          icon="💑"
           description="月老牵线，命盘合婚。AI 为您解读两人缘分深浅、性格匹配、未来走向。"
           fields={FIELDS}
         />

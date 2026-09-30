@@ -245,14 +245,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font-weight: 700;
 }
 
+/* 角标是标记，不是促销贴纸：金色描边、不闪烁。
+   红色留给真正的负向状态（错误、扣款提醒），不参与吸引注意力。 */
 .badge-hot {
-  background: linear-gradient(135deg, #c41e3a, #a0182e);
-  color: white;
-  font-size: 0.7rem;
+  background: rgba(201, 150, 58, 0.12);
+  color: #e8cf8d;
+  border: 1px solid rgba(201, 150, 58, 0.38);
+  font-size: 0.68rem;
   padding: 2px 8px;
   border-radius: 2px;
-  letter-spacing: 0.1em;
-  animation: pulseGold 2s ease-in-out infinite;
+  letter-spacing: 0.14em;
+}
+
+/* 印章 —— 会员等级与状态标记，取代 emoji 皇冠/月亮 */
+.glyph-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: #e8cf8d;
+  border: 1px solid rgba(201, 150, 58, 0.42);
+  border-radius: 50%;
+  line-height: 1;
 }
 
 .hero-stage { isolation: isolate; }
@@ -265,7 +280,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .hero-lede { color: rgba(246, 240, 228, .64); font-size: 1rem; line-height: 2; margin: 0 auto 2rem; }
 .hero-note { color: rgba(246, 240, 228, .38); font-size: .75rem; margin-top: 1rem; letter-spacing: .05em; }
 .hero-constellation { color: rgba(222, 185, 115, .42); position: absolute; width: min(78vw, 37rem); height: min(78vw, 37rem); top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: -1; animation: constellationDrift 22s ease-in-out infinite; }
-.fortune-card { min-height: 20rem; }
+/* 卡片高度由内容决定，配合 flex 把价格压到底部。
+   原先写死 20rem 会在三行文案下方留出大片死白。 */
+.fortune-card { min-height: 15rem; }
 .card-action { display: block; margin-top: 1rem; color: rgba(244, 217, 154, .75); font-size: .76rem; letter-spacing: .12em; opacity: 0; transform: translateY(4px); transition: opacity .25s ease, transform .25s ease; }
 .group:hover .card-action, .group:focus-visible .card-action { opacity: 1; transform: translateY(0); }
 .brand-mark { color: var(--gold-bright); }

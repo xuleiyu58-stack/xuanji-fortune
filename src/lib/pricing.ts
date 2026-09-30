@@ -5,17 +5,18 @@ export type Mode = "daily" | "oracle" | "bazi" | "tarot" | "love";
 
 export interface ModeInfo {
   title: string;
-  icon: string;
   /** 单位：元。0 表示免费模式。 */
   price: number;
 }
 
+// 刻意不放 icon 字段：模式的图形是卦象爻线，由 components/Glyph.tsx 的
+// MODE_TRIGRAM 提供。emoji 曾放在这里，会被顺手再引回来。
 export const MODES: Record<Mode, ModeInfo> = {
-  daily: { title: "今日运势", icon: "🎯", price: 0 },
-  oracle: { title: "灵签求签", icon: "🏮", price: 0 },
-  bazi: { title: "八字命理", icon: "📅", price: 6.6 },
-  tarot: { title: "AI 塔罗", icon: "🃏", price: 3.8 },
-  love: { title: "姻缘配对", icon: "💑", price: 8.8 },
+  daily: { title: "今日运势", price: 0 },
+  oracle: { title: "灵签求签", price: 0 },
+  bazi: { title: "八字命理", price: 6.6 },
+  tarot: { title: "AI 塔罗", price: 3.8 },
+  love: { title: "姻缘配对", price: 8.8 },
 };
 
 export interface MemberPlan {

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import Glyph, { type Trigram } from "./Glyph";
 
 interface Props {
-  icon: string;
+  trigram: Trigram;
   title: string;
   subtitle: string;
   price: string;
@@ -13,7 +14,7 @@ interface Props {
   delay: number;
 }
 
-export default function FortuneCard({ icon, title, subtitle, price, tag, href, delay }: Props) {
+export default function FortuneCard({ trigram, title, subtitle, price, tag, href, delay }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 40 }}
@@ -33,9 +34,10 @@ export default function FortuneCard({ icon, title, subtitle, price, tag, href, d
             <span className="badge-hot absolute top-3 right-3">{tag}</span>
           )}
 
-          <span className="text-4xl mb-4 relative z-10 group-hover:scale-110 transition-transform duration-300">
-            {icon}
-          </span>
+          {/* 固定高度的标记槽：让五张卡的标题在同一基线上 */}
+          <div className="h-11 flex items-center justify-center mb-5 relative z-10 text-gold-400/75 group-hover:text-gold-300 transition-colors duration-300">
+            <Glyph trigram={trigram} size={42} />
+          </div>
 
           <h3
             className="text-xl mb-2 text-gold relative z-10"
@@ -44,7 +46,7 @@ export default function FortuneCard({ icon, title, subtitle, price, tag, href, d
             {title}
           </h3>
 
-          <p className="text-paper-100/50 text-sm mb-4 leading-relaxed relative z-10">
+          <p className="text-paper-100/60 text-sm mb-4 leading-relaxed relative z-10">
             {subtitle}
           </p>
 

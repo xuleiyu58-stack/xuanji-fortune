@@ -29,7 +29,7 @@ export default function QuotaBanner() {
   if (member) {
     return (
       <div className="glass rounded-lg px-4 py-2 flex items-center justify-between">
-        <span className="text-gold-300 text-sm">👑 会员专享 · 无限次解读</span>
+        <span className="text-gold-300 text-sm">会员专享 · 无限次解读</span>
         <Link href="/member" className="text-gold-400/60 text-xs hover:text-gold-300 transition-colors">
           管理 →
         </Link>

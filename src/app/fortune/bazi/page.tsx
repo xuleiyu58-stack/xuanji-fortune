@@ -48,11 +48,11 @@ const FIELDS = [
     label: "想了解的方向（可选）",
     type: "select" as const,
     options: [
-      { value: "综合", label: "🎯 全面分析" },
-      { value: "事业", label: "💼 事业发展" },
-      { value: "财运", label: "💰 财富运势" },
-      { value: "感情", label: "💕 感情婚姻" },
-      { value: "健康", label: "🌿 健康运势" },
+      { value: "综合", label: "全面分析" },
+      { value: "事业", label: "事业发展" },
+      { value: "财运", label: "财富运势" },
+      { value: "感情", label: "感情婚姻" },
+      { value: "健康", label: "健康运势" },
     ],
   },
 ];
@@ -67,7 +67,6 @@ export default function BaziPage() {
         <FortuneForm
           mode="bazi"
           title="八字命理"
-          icon="📅"
           description="子平八字，紫微斗数。填写出生信息，AI 为您排盘分析终身命局。"
           fields={FIELDS}
         />
