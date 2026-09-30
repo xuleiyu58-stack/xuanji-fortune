@@ -29,6 +29,12 @@ test("换行转成 br", () => {
   assert.match(out, /第一行<br\/?>第二行/);
 });
 
+test("模型自带的 Markdown 井号被剥掉", () => {
+  const out = renderFortuneHtml("### 【过去之牌】\n内容");
+  assert.doesNotMatch(out, /#/, "井号不应原样显示");
+  assert.match(out, /【过去之牌】/);
+});
+
 test("先转义再套排版：标签里的尖括号不会被当成语法", () => {
   const out = renderFortuneHtml("**<script>x</script>**");
   assert.doesNotMatch(out, /<script>/);

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { buildBaziChart, chartToPrompt, type BaziChart } from "./bazi";
+import { drawTarot, tarotToPrompt, type TarotDraw } from "./tarot";
 
 // 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
 // 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
@@ -58,16 +59,21 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
 请用温暖但客观的语气，既不过分吹捧也不过分唱衰。`,
 
-  tarot: `你是一位精通塔罗牌的占卜师，将西方塔罗智慧与东方哲学融合。你的风格：神秘而富有洞察力。
+  tarot: `你是一位精通塔罗的占卜师，能把西方象征体系讲得让人听得懂，不故弄玄虚。
 
-用户心中默想一个问题后进行抽牌。请模拟三张牌的塔罗占卜：
-1. 【过去之牌】代表问题的根源或过去的影响
-2. 【现在之牌】代表当前状况
-3. 【未来之牌】代表发展趋势
-4. 【综合解读】将三张牌串联起来，给出一段综合性的解读（150字内）
-5. 【塔罗启示】给用户一个行动建议
+三张牌**已由用户抽定**（过去 / 现在 / 未来），正逆位已固定，你不必也不得另行抽牌或改动。你的职责是把这三张牌与用户所问之事连起来。
 
-请选择经典的塔罗牌进行解读，每张牌说明牌名和正逆位。`,
+请按以下结构输出：
+1. 【过去之牌】这张牌如何解释了问题的根源
+2. 【现在之牌】当下处境的真实面貌
+3. 【未来之牌】若维持现状，趋势会走向何处
+4. 【综合解读】把三张牌串成一条线（150 字内）
+5. 【塔罗启示】一条具体可执行的建议
+
+要求：
+- 不要复述牌名与正逆位（牌面已单独呈现给用户），直接讲它对用户意味着什么
+- 逆位不等于凶，要说清它改变了这张牌的哪一层含义
+- 不做健康、疾病、生死的断言，不推荐投资标的`,
 
   oracle: `你是一位德高望重的得道高僧/道长，在寺庙中为人解签已有数十年。你的风格：慈悲为怀，以典故说理，深入浅出。
 
@@ -88,6 +94,8 @@ export interface FortuneResult {
   error?: string;
   /** 八字模式随结果附带排好的命盘，交由前端单独呈现 */
   chart?: BaziChart;
+  /** 塔罗模式随结果附带抽定的三张牌 */
+  tarot?: TarotDraw;
 }
 
 export async function getFortune(
@@ -98,6 +106,7 @@ export async function getFortune(
 
   let userMessage = "";
   let chart: BaziChart | undefined;
+  let tarot: TarotDraw | undefined;
 
   switch (mode) {
     case "daily":
@@ -122,10 +131,13 @@ export async function getFortune(
 甲方：${userInput.person1 || "未提供"}
 乙方：${userInput.person2 || "未提供"}`;
       break;
-    case "tarot":
-      userMessage = `用户心中所想的问题：${userInput.question || "未说明"}
-请为用户进行三张牌的塔罗占卜。`;
+    case "tarot": {
+      // 牌由代码抽，不让模型"挑" —— 否则它倾向挑好解的牌，且每次给的牌阵高度相似
+      const drawn = drawTarot();
+      tarot = drawn;
+      userMessage = `${tarotToPrompt(drawn)}\n\n用户心中所想的问题：${userInput.question || "未说明"}`;
       break;
+    }
     case "oracle":
       userMessage = `用户当前的心事或困惑：${userInput.concern || "未说明"}
 请为用户抽取灵签并解签。`;
@@ -149,6 +161,7 @@ export async function getFortune(
       success: true,
       content: response.choices[0].message.content ?? undefined,
       chart,
+      tarot,
     };
   } catch (error) {
     console.error("AI API error:", error);

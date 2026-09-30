@@ -140,15 +140,29 @@ function numericLiteral(value: number): RegExp {
   return new RegExp(`(?<![\\d.])${escaped}(?![\\d])`);
 }
 
+// SVG 的路径数据里全是坐标，`a4.8 4.8 0 0 1-4.6-3.8z` 这种串会和价格数值撞车。
+// 它是几何，不是价格，扫之前先剥掉。
+function stripSvgGeometry(src: string): string {
+  return src.replace(/\b(d|points|viewBox)="[^"]*"/g, '$1=""');
+}
+
 test("价格表里的数值不得在其它文件里作为字面量出现", () => {
   assert.ok(PRICE_VALUES.length >= 3, `价格表疑似为空，只有 ${PRICE_VALUES.length} 个非零价格`);
   for (const rel of TARGETS) {
-    const src = read(rel);
+    const src = stripSvgGeometry(read(rel));
     for (const value of PRICE_VALUES) {
       const hit = src.match(numericLiteral(value));
       assert.equal(hit, null, `${rel} 里重复了价格表里的 ${formatPrice(value)}：${hit?.[0] ?? ""}`);
     }
   }
+});
+
+test("剥 SVG 几何数据不会连价格一起剥掉", () => {
+  const src = `<path d="M6 4a4.8 4.8 0 0 1-4.6-3.8z" /><span className="amount">3.8</span>`;
+  const stripped = stripSvgGeometry(src);
+  assert.ok(!stripped.includes("-3.8"), "路径数据应被剥掉");
+  assert.ok(stripped.includes(`>3.8<`), "路径之外的 3.8 必须留下，否则守卫被架空");
+  assert.ok(numericLiteral(3.8).test(stripped), "剥完之后仍应能抓到真正的价格字面量");
 });
 
 test("新增的两条规则确实能抓住数据字面量这种写法", () => {

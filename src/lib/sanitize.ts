@@ -25,6 +25,9 @@ export function escapeHtml(raw: string): string {
  */
 export function renderFortuneHtml(raw: string): string {
   return escapeHtml(raw)
+    // 模型偶尔会自带 Markdown 标题（`### 【过去之牌】`）；不剥掉的话井号会原样显示。
+    // 标题样式统一由下面的【】规则负责，不让两套标记打架。
+    .replace(/^#{1,6}\s*/gm, "")
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gold-300">$1</strong>')
     .replace(/【(.+?)】/g, '<strong class="text-gold-300 block mt-4 mb-2 text-base">【$1】</strong>')
     .replace(/\n{2,}/g, "<br/><br/>")
