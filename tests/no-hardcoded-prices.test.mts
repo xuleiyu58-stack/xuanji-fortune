@@ -5,8 +5,23 @@ import { MODES, MEMBER_PLANS, formatPrice } from "../src/lib/pricing.ts";
 
 const ROOT = new URL("../src/", import.meta.url);
 
+/**
+ * 剥掉注释再扫。
+ * 注释不是界面，注释里写价格渲染不出来 —— 但不剥的话，解释这条规则的说明文字
+ * 本身就会触发规则（本文件的第一版就被自己的注释绊倒过）。
+ * 注意这只删注释，不碰字符串与 JSX 文本，真正的硬编码价格照样在。
+ */
+function stripComments(src: string): string {
+  return src
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // JSX 注释 {/* ... */}
+    .replace(/\/\*[\s\S]*?\*\//g, "") // 块注释
+    .split("\n")
+    .filter((line) => !/^\s*\/\//.test(line)) // 整行行注释
+    .join("\n");
+}
+
 function read(rel: string): string {
-  return readFileSync(new URL(rel, ROOT), "utf8");
+  return stripComments(readFileSync(new URL(rel, ROOT), "utf8"));
 }
 
 // pricing.ts 是价格表的唯一住处，也是唯一允许出现价格字面量的文件。
@@ -77,6 +92,16 @@ test("价格数字不得直接写进 amount 容器", () => {
     const hit = read(rel).match(/className="amount"[^>]*>\s*\d/);
     assert.equal(hit, null, `${rel} 的 amount 容器里仍是写死的数字：${hit?.[0] ?? ""}`);
   }
+});
+
+test("免费判定必须从 pricing 派生，不得写死模式名", () => {
+  // 曾经这里写死 `mode === "daily"`，而 pricing 里灵签也是 0 元 ——
+  // 结果首页说灵签免费、按钮显示「¥0 立即测算」、点下去却弹收款码。
+  // 以后再加免费模式（比如姻缘限免），只要不改这个判断就会重演，所以钉住。
+  const form = read("components/FortuneForm.tsx");
+  assert.doesNotMatch(form, /mode === "daily"/, "免费判定写死了 daily");
+  assert.doesNotMatch(form, /mode !== "daily"/, "付费判定写死了 daily");
+  assert.match(form, /isFreeMode/, "应通过 pricing 的 isFreeMode 判断免费与否");
 });
 
 test("不得再向 FortuneForm 传 price 属性", () => {
@@ -155,6 +180,18 @@ test("价格表里的数值不得在其它文件里作为字面量出现", () =>
       assert.equal(hit, null, `${rel} 里重复了价格表里的 ${formatPrice(value)}：${hit?.[0] ?? ""}`);
     }
   }
+});
+
+test("剥注释不会连代码里的价格一起剥掉", () => {
+  const src = [
+    "// 说明：以前这里写死过 ¥6.6",
+    "{/* 这个价格曾经是 ¥3.8 */}",
+    "const x = <span className=\"amount\">6.6</span>;",
+  ].join("\n");
+  const stripped = stripComments(src);
+  assert.doesNotMatch(stripped, /¥6\.6/, "整行注释应被剥掉");
+  assert.doesNotMatch(stripped, /¥3\.8/, "JSX 注释应被剥掉");
+  assert.ok(numericLiteral(6.6).test(stripped), "代码里的 6.6 必须留下，否则守卫被架空");
 });
 
 test("剥 SVG 几何数据不会连价格一起剥掉", () => {

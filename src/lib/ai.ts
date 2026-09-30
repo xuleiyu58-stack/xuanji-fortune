@@ -8,6 +8,13 @@ import {
   type DailyReading,
   type Hexagram,
 } from "./daily";
+import {
+  drawOracle,
+  oracleToPrompt,
+  parseOracle,
+  type OracleDraw,
+  type OracleReading,
+} from "./oracle";
 
 // 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
 // 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
@@ -93,17 +100,30 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 - 逆位不等于凶，要说清它改变了这张牌的哪一层含义
 - 不做健康、疾病、生死的断言，不推荐投资标的`,
 
-  oracle: `你是一位德高望重的得道高僧/道长，在寺庙中为人解签已有数十年。你的风格：慈悲为怀，以典故说理，深入浅出。
+  oracle: `你是一位在寺中为人解签数十年的老修行。风格：慈悲平实，以典故说理，不故弄玄虚，也不故作高深。
 
-请为用户模拟一次灵签求签，生成以下内容：
-1. 【签号】生成一支灵签编号（如：第×签 上上签/中平签/下下签等）
-2. 【签文】四句七言诗，古典雅致
-3. 【典故】引用一个历史典故或佛教/道教故事来解签
-4. 【解曰】用白话文解释签文的含义（100字内）
-5. 【人生启示】这个签给当代人的启示
-6. 【大师开示】一句佛语或道家智慧，配合签文给用户指引
+用户已摇得一签，**签号与签等由程序摇定，不得改动、不得另摇**。请为这一签拟写签文并解签。
 
-签文要写得有古韵，典故要真实，解签要有深度。`,
+**必须严格按下面的格式输出**，每个方括号标记独占一行：
+
+【签文】
+（四句七言，每句一行，句末不加标点，必须恰好四行）
+
+【典故】
+（一个真实可考的历史典故或佛道故事，并说明它与本签的关系）
+
+【解曰】
+（白话解释签文含义，100 字内）
+
+【大师开示】
+（一句指引，需结合用户所问之事）
+
+要求：
+- 四句须是完整的七言。签文要与所给签等相称：上签写顺遂中的警醒，下签写困顿中的出路
+- 不做绝对化的吉凶断言，不涉健康、疾病、生死
+- 典故必须真实可考，不得杜撰人物与出处
+- **签文是你为这一签新拟的**，不要声称它出自某一部具体签谱
+- 开头单独一行加上"命理之说，信则有不信则无，仅供参考娱乐"`,
 };
 
 export interface FortuneResult {
@@ -116,6 +136,8 @@ export interface FortuneResult {
   tarot?: TarotDraw;
   /** 运势模式附带起好的卦与解析出的宜忌 —— 解析失败时为 undefined，界面退回只展示原文 */
   daily?: DailyReading;
+  /** 灵签模式附带摇出的签与解析出的签文 */
+  oracle?: OracleReading;
 }
 
 export async function getFortune(
@@ -128,6 +150,7 @@ export async function getFortune(
   let chart: BaziChart | undefined;
   let tarot: TarotDraw | undefined;
   let dailyHex: Hexagram | undefined;
+  let oracleDraw: OracleDraw | undefined;
 
   switch (mode) {
     case "daily": {
@@ -164,10 +187,13 @@ export async function getFortune(
       userMessage = `${tarotToPrompt(drawn)}\n\n用户心中所想的问题：${userInput.question || "未说明"}`;
       break;
     }
-    case "oracle":
-      userMessage = `用户当前的心事或困惑：${userInput.concern || "未说明"}
-请为用户抽取灵签并解签。`;
+    case "oracle": {
+      // 摇签也是随机的。让模型摇，它会按叙事需要挑吉签，十次八次上上签，那就不叫求签了。
+      const drawn = drawOracle();
+      oracleDraw = drawn;
+      userMessage = `${oracleToPrompt(drawn)}\n\n用户当前的心事或困惑：${userInput.concern || "未说明"}`;
       break;
+    }
     default:
       userMessage = "请为我生成运势解读。";
   }
@@ -188,8 +214,10 @@ export async function getFortune(
     // 宜忌的解析是尽力而为：模型没按格式走就返回 undefined，界面退回只展示原文，不会白屏
     const daily =
       dailyHex && content ? (parseDailyReading(content, dailyHex) ?? undefined) : undefined;
+    const oracle =
+      oracleDraw && content ? (parseOracle(content, oracleDraw) ?? undefined) : undefined;
 
-    return { success: true, content, chart, tarot, daily };
+    return { success: true, content, chart, tarot, daily, oracle };
   } catch (error) {
     console.error("AI API error:", error);
 
