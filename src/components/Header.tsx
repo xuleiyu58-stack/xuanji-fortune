@@ -1,12 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import HistoryDrawer from "./HistoryDrawer";
 import { getHistory, isMember } from "@/lib/store";
 
+// 导航项统一在这里定义，桌面端与移动端共用，避免两处漂移。
+// 「首页」是必需的：全站六个页面，此前回首页只能点左上角那两个字。
+const NAV = [
+  { href: "/", label: "首页" },
+  { href: "/fortune/daily", label: "今日运势" },
+  { href: "/fortune/bazi", label: "八字命理" },
+  { href: "/fortune/love", label: "姻缘配对" },
+  { href: "/fortune/tarot", label: "AI 塔罗" },
+  { href: "/fortune/oracle", label: "灵签求签" },
+];
+
 export default function Header() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [hasReadings, setHasReadings] = useState(false);
@@ -32,11 +45,19 @@ export default function Header() {
             <span className="text-lg font-semibold text-gold hidden sm:inline" style={{ fontFamily: "'Noto Serif SC', serif" }}>机</span>
           </Link>
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/fortune/daily" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">今日运势</Link>
-            <Link href="/fortune/bazi" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">八字命理</Link>
-            <Link href="/fortune/love" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">姻缘配对</Link>
-            <Link href="/fortune/tarot" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">AI 塔罗</Link>
-            <Link href="/fortune/oracle" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">灵签求签</Link>
+            {NAV.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`text-sm tracking-wider transition-colors ${active ? "text-gold-300" : "text-paper-100/70 hover:text-gold-300"}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
           <div className="flex items-center gap-3">
             {member && <Link href="/member" className="hidden sm:inline text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员</Link>}
@@ -53,7 +74,17 @@ export default function Header() {
           {open && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden glass border-t border-gold-300/10 overflow-hidden">
               <div className="px-6 py-4 flex flex-col gap-3">
-                {[["今日运势","/fortune/daily"],["八字命理","/fortune/bazi"],["姻缘配对","/fortune/love"],["AI 塔罗","/fortune/tarot"],["灵签求签","/fortune/oracle"]].map(([l,h]) => <Link key={h} href={h} onClick={() => setOpen(false)} className="text-paper-100/80 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider">{l}</Link>)}
+                {NAV.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    aria-current={pathname === item.href ? "page" : undefined}
+                    className={`transition-colors py-2 text-sm tracking-wider ${pathname === item.href ? "text-gold-300" : "text-paper-100/80 hover:text-gold-300"}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
                 <div className="border-t border-gold-300/10 pt-3 mt-1">
                   <button onClick={() => { setOpen(false); setHistoryOpen(true); }} className="text-paper-100/60 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider w-full text-left">测算历史{hasReadings && <span className="ml-2 text-xs text-vermillion-400">●</span>}</button>
                   {member && <Link href="/member" className="inline-block mt-2 text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员专享</Link>}

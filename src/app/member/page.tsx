@@ -86,7 +86,7 @@ export default function MemberPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mystic-card rounded-xl p-8 max-w-2xl mx-auto">
             <h3 className="text-lg text-gold mb-6 text-center" style={{ fontFamily: "'Noto Serif SC', serif" }}>会员专属权益</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {["全模式无限次解读", "AI 深度命理分析", "专属大师寄语", "优先体验新功能", "永久保存测算记录"].map((text) => (<div key={text} className="flex items-start gap-3"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-gold-400/70 shrink-0" aria-hidden="true" /><span className="text-paper-100/65 text-sm">{text}</span></div>))}
+              {["全模式无限次解读", "AI 深度命理分析", "专属大师寄语", "优先体验新功能", "测算记录随时回看"].map((text) => (<div key={text} className="flex items-start gap-3"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-gold-400/70 shrink-0" aria-hidden="true" /><span className="text-paper-100/65 text-sm">{text}</span></div>))}
             </div>
           </motion.div>
         </div>
