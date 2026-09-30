@@ -69,7 +69,7 @@ export default function MemberPage() {
             <h1 className="text-3xl md:text-5xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>问道 · 会员</h1>
             <p className="text-paper-100/50 text-sm max-w-md mx-auto leading-relaxed">解锁全部 AI 命理解读功能，无限次使用。<br />知命、改运、掌人生，从今天开始。</p>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16 max-w-2xl mx-auto">
             {PLANS.map((plan, i) => (
               <motion.div key={plan.name} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} className={`rounded-xl p-8 text-center relative ${plan.recommend ? "border-gold-glow" : "mystic-card"}`} style={plan.recommend ? { background: "linear-gradient(135deg, rgba(201, 150, 58, 0.12) 0%, rgba(10, 10, 18, 0.95) 100%)", border: "1px solid rgba(201, 150, 58, 0.4)", boxShadow: "0 0 40px rgba(201, 150, 58, 0.1)" } : undefined}>
                 {plan.recommend && <span className="badge-hot absolute top-3 right-3">最值</span>}
