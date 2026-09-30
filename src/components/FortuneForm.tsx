@@ -104,7 +104,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? (<span className="flex items-center justify-center gap-3"><span className="mystic-loader !w-5 !h-5" />天机推演中...</span>) : mode === "daily" && quota > 0 ? `免费获取今日运势（剩余 ${quota} 次）` : mode === "daily" ? `¥${formatPrice(MEMBER_PLANS[0].price)} 开通会员无限次` : member ? "会员免费测算" : `¥${price} 立即测算`}
           </button>
-          {mode !== "daily" && !member && (<p className="text-center text-paper-100/20 text-xs">开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}/月，全模式无限次使用 · <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">立即开通</button></p>)}
+          {mode !== "daily" && !member && (<p className="text-center text-paper-100/45 text-xs">开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}/月，全模式无限次使用 ·<button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">立即开通</button></p>)}
         </motion.form>
       )}
       {loading && (<div className="mystic-card rounded-lg p-12 text-center"><div className="mystic-loader mx-auto mb-6" /><p className="text-gold-300 text-lg" style={{ fontFamily: "'Noto Serif SC', serif" }}>天机推演中...</p><p className="text-paper-100/30 text-sm mt-2">AI 正在为您排盘解读，请稍候</p></div>)}
