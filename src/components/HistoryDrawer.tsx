@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { getHistory, deleteReading, clearHistory, Reading } from "@/lib/store";
 import { useState, useEffect } from "react";
-import Glyph from "./Glyph";
+import Glyph, { MODE_TRIGRAM } from "./Glyph";
 
 interface Props {
   open: boolean;
@@ -100,7 +100,7 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-lg">{r.icon}</span>
+                              <Glyph trigram={MODE_TRIGRAM[r.mode] ?? "qian"} size={22} />
                               <span className="text-paper-100/60 text-xs">
                                 {MODE_LABELS[r.mode] || r.mode}
                               </span>

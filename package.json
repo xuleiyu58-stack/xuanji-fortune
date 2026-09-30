@@ -13,6 +13,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
     "framer-motion": "^12.42.2",
+    "lunar-typescript": "^1.8.6",
     "next": "14.2.35",
     "openai": "^6.46.0",
     "react": "^18",

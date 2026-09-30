@@ -1,9 +1,19 @@
 import OpenAI from "openai";
+import { buildBaziChart, chartToPrompt, type BaziChart } from "./bazi";
 
-const client = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || "sk-placeholder",
-  baseURL: "https://api.deepseek.com/v1",
-});
+// 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
+// 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
+let _client: OpenAI | null = null;
+function client(): OpenAI {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    throw new Error("缺少 DEEPSEEK_API_KEY 环境变量");
+  }
+  if (!_client) {
+    _client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com/v1" });
+  }
+  return _client;
+}
 
 const SYSTEM_PROMPTS: Record<string, string> = {
   daily: `你是一位精通中国传统命理的玄学大师，拥有三十年的算命经验。你的风格是：儒雅深邃，引经据典，既有易理根基又通俗易懂。
@@ -18,18 +28,23 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
 请确保回复有仪式感，使用一些恰当的易经术语但不要晦涩。`,
 
-  bazi: `你是一位精通八字命理的玄学大师，擅长紫微斗数和子平八字。你的风格：旁征博引，用五行生克制化解说命局。
+  bazi: `你是一位精通子平八字与五行生克的命理师。你的风格：以五行生克制化说理，旁征博引，不故弄玄虚。
 
-用户会提供出生年月日时信息。请根据八字排盘原理，生成以下内容：
-1. 【八字排盘】列出年柱、月柱、日柱、时柱的天干地支
-2. 【五行分析】分析日主五行强弱，喜神忌神
-3. 【命局总评】综合评价命局格局（100字内）
-4. 【事业财运】事业方向和财运分析
-5. 【感情婚姻】感情运势分析
-6. 【大运走势】当前所处大运及未来趋势
-7. 【大师寄语】总结性的人生建议
+用户会提供一份**已经排好的命盘**——四柱、五行分布、大运均由程序精确推算，你不必也不得自行推算或改动其中任何数字。你的职责只有一件事：解读。
 
-注意：开头加上免责声明"命理之说，信则有不信则无，仅供参考娱乐"。`,
+请按以下结构输出：
+1. 【命局总评】综合格局与气势（120 字内）
+2. 【日主强弱】日主在月令与全局中的强弱，喜用与忌讳
+3. 【事业财运】适合的方向与聚财方式
+4. 【感情婚姻】感情模式与相处要点
+5. 【大运走势】结合已给出的大运，说明当前所处阶段与下一步转折
+6. 【大师寄语】一条可落地的建议
+
+要求：
+- 不要复述排盘数据（盘已单独呈现给用户），直接给解读
+- 术语要解释，让不懂八字的人也能读懂
+- 不做健康、疾病、生死的断言，不推荐投资标的
+- 开头加上"命理之说，信则有不信则无，仅供参考娱乐"`,
 
   love: `你是一位精通姻缘命理的月老传人，擅长合婚算命。你的风格：温暖细腻，既有命理依据又充满人情味。
 
@@ -67,23 +82,41 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 签文要写得有古韵，典故要真实，解签要有深度。`,
 };
 
+export interface FortuneResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+  /** 八字模式随结果附带排好的命盘，交由前端单独呈现 */
+  chart?: BaziChart;
+}
+
 export async function getFortune(
   mode: string,
   userInput: Record<string, string>
-) {
+): Promise<FortuneResult> {
   const systemPrompt = SYSTEM_PROMPTS[mode] || SYSTEM_PROMPTS.daily;
 
   let userMessage = "";
+  let chart: BaziChart | undefined;
+
   switch (mode) {
     case "daily":
       userMessage = "请为我生成今日运势解读。";
       break;
-    case "bazi":
-      userMessage = `请根据以下信息排八字命盘：
-出生日期：${userInput.birthDate || "未提供"}
-出生时间：${userInput.birthTime || "未知"}
-性别：${userInput.gender || "未知"}`;
+    case "bazi": {
+      // 排盘是确定性计算，交给模型等于让它编；这里先算准，再让它只做解读
+      const built = buildBaziChart({
+        birthDate: userInput.birthDate ?? "",
+        birthTime: userInput.birthTime ?? "",
+        gender: userInput.gender ?? "",
+      });
+      if (!built) {
+        return { success: false, error: "出生信息不完整，无法排盘，请返回检查日期与时辰" };
+      }
+      chart = built;
+      userMessage = `以下命盘已由程序精确排定，请直接解读，不要自行推算或改动：\n\n${chartToPrompt(built)}`;
       break;
+    }
     case "love":
       userMessage = `请分析以下两人的姻缘：
 甲方：${userInput.person1 || "未提供"}
@@ -102,7 +135,7 @@ export async function getFortune(
   }
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await client().chat.completions.create({
       model: "deepseek-chat",
       messages: [
         { role: "system", content: systemPrompt },
@@ -114,13 +147,17 @@ export async function getFortune(
 
     return {
       success: true,
-      content: response.choices[0].message.content,
+      content: response.choices[0].message.content ?? undefined,
+      chart,
     };
   } catch (error) {
     console.error("AI API error:", error);
-    return {
-      success: false,
-      error: "天机不可泄露，请稍后再试",
-    };
+
+    // 光说"天机不可泄露"，用户重试一百次也没用。先说清楚是什么问题。
+    const detail = error instanceof Error ? error.message : "";
+    if (detail.includes("DEEPSEEK_API_KEY")) {
+      return { success: false, error: "解读服务尚未配置完成，请稍后再来" };
+    }
+    return { success: false, error: "解读生成失败，请稍后重试" };
   }
 }

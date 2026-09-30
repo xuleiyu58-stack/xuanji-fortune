@@ -7,6 +7,10 @@ import QuotaBanner from "./QuotaBanner";
 import { consumeFreeQuota, isMember, saveReading, getFreeQuota } from "@/lib/store";
 import { MODES, MEMBER_PLANS, formatPrice, FREE_DAILY_QUOTA, type Mode } from "@/lib/pricing";
 import Glyph, { MODE_TRIGRAM } from "./Glyph";
+import BaziChart from "./BaziChart";
+import { renderFortuneHtml } from "@/lib/sanitize";
+// 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
+import type { BaziChart as BaziChartData } from "@/lib/bazi";
 
 interface Field {
   name: string;
@@ -31,6 +35,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
   const trigram = MODE_TRIGRAM[mode] ?? "qian";
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [result, setResult] = useState<string | null>(null);
+  const [chart, setChart] = useState<BaziChartData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -50,7 +55,9 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
       const data = await res.json();
       if (data.success) {
         setResult(data.content);
-        saveReading({ mode, title, icon, result: data.content, input: formData });
+        // 不存图标 —— 记录里的卦象由 mode 直接推出，冗余存储只会两处漂移
+        saveReading({ mode, title, result: data.content, input: formData });
+        if (data.chart) setChart(data.chart);
         setMember(isMember());
         setQuota(getFreeQuota());
       } else { setError(data.error || "测算失败"); }
@@ -111,12 +118,16 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
       {error && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mystic-card rounded-lg p-8 text-center border-vermillion-400/30"><p className="text-vermillion-400 mb-4">{error}</p><button onClick={() => { setError(null); setResult(null); }} className="btn-mystic">重新测算</button></motion.div>)}
       {result && !loading && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
-          <div className="mystic-card rounded-lg p-8 border-gold-glow"><div className="fortune-text text-paper-100/80 text-sm leading-loose whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: result?.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gold-300">$1</strong>').replace(/【(.*?)】/g, '<strong class="text-gold-300 block mt-4 mb-2 text-base">【$1】</strong>').replace(/\n\n/g, "<br/><br/>").replace(/\n/g, "<br/>") || "" }} /></div>
+          {/* 先给盘，再给解。盘是排出来的，看得到；解是推出来的，读得懂。 */}
+          {chart && <BaziChart chart={chart} />}
+          <div className="mystic-card rounded-lg p-8 border-gold-glow">
+            <h3 className="text-lg text-gold mb-5" style={{ fontFamily: "'Noto Serif SC', serif" }}>大师解读</h3>
+            <div className="fortune-text text-paper-100/80 text-sm leading-loose whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderFortuneHtml(result) }} />
+          </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => { setResult(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
+            <button onClick={() => { setResult(null); setChart(null); setFormData({}); setHasPaid(false); setQuota(getFreeQuota()); }} className="btn-mystic">重新测算</button>
             <button onClick={handleCopyResult} className={`btn-primary ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制结果 · 分享好友"}</button>
           </div>
-          <p className="text-center text-paper-100/20 text-xs">分享给 3 位好友，赠送 1 天会员体验</p>
         </motion.div>
       )}
     </div>

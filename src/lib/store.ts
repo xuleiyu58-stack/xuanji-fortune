@@ -4,7 +4,6 @@ export interface Reading {
   id: string;
   mode: string;
   title: string;
-  icon: string;
   result: string;
   input: Record<string, string>;
   createdAt: string;
