@@ -1,11 +1,12 @@
 "use client";
 
 import { getFreeQuota, isMember, getReferralCode, getReferralCount } from "@/lib/store";
+import { MEMBER_PLANS, formatPrice, FREE_DAILY_QUOTA } from "@/lib/pricing";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
 export default function QuotaBanner() {
-  const [quota, setQuota] = useState(3);
+  const [quota, setQuota] = useState(FREE_DAILY_QUOTA);
   const [member, setMember] = useState(false);
   const [copied, setCopied] = useState(false);
   const [refCount, setRefCount] = useState(0);
@@ -44,7 +45,7 @@ export default function QuotaBanner() {
           <span className={quota > 0 ? "text-gold-300" : "text-vermillion-400"}>
             {quota}
           </span>
-          /3
+          /{FREE_DAILY_QUOTA}
         </span>
         <span className="text-paper-100/20 text-xs">每日重置</span>
       </div>
@@ -56,7 +57,7 @@ export default function QuotaBanner() {
           </p>
           <div className="flex gap-2">
             <Link href="/member" className="btn-primary !py-1.5 !px-4 !text-xs flex-1 text-center">
-              开通会员 ¥28.8
+              开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}
             </Link>
             <button
               onClick={handleCopyRef}

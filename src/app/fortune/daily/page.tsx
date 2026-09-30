@@ -45,7 +45,6 @@ export default function DailyPage() {
           icon="🎯"
           description="每日一签，AI 解读今日吉凶宜忌。免费体验，开启你的玄学之旅。"
           fields={FIELDS}
-          price="0"
         />
       </main>
       <Footer />

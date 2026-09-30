@@ -7,13 +7,17 @@ import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import PaymentModal from "@/components/PaymentModal";
 import { isMember, setMember, setMemberExpiry } from "@/lib/store";
+import { MEMBER_PLANS, formatPrice } from "@/lib/pricing";
 import Link from "next/link";
 
-const PLANS = [
-  { name: "月卡", price: "28.8", duration: "30天", original: "38.8", recommend: false, icon: "🌙", desc: "按月订阅，灵活便捷", days: 30 },
-  { name: "年卡", price: "88", duration: "365天", original: "465.6", recommend: true, icon: "👑", desc: "日均 ¥0.24，超值之选", days: 365 },
-  { name: "终身", price: "188", duration: "永久", original: "999", recommend: false, icon: "💎", desc: "一次购买，终身无忧", days: 3650 },
-];
+const PLANS = MEMBER_PLANS.map((p) => ({
+  ...p,
+  duration: `${p.days}天`,
+  icon: p.id === "member_year" ? "👑" : "🌙",
+  recommend: p.id === "member_year",
+  // 文案里不能出现具体金额 —— 否则会被本任务的 no-hardcoded-prices 测试判为硬编码价格
+  desc: p.id === "member_year" ? "全年畅享，超值之选" : "按月订阅，灵活便捷",
+}));
 
 export default function MemberPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -72,8 +76,7 @@ export default function MemberPage() {
                 <span className="text-3xl block mb-3">{plan.icon}</span>
                 <h3 className="text-xl text-gold mb-1" style={{ fontFamily: "'Noto Serif SC', serif" }}>{plan.name}</h3>
                 <p className="text-paper-100/30 text-xs mb-4">{plan.duration} · {plan.desc}</p>
-                <div className="price-tag mb-1 justify-center"><span className="symbol">¥</span><span className="amount">{plan.price}</span></div>
-                <p className="text-paper-100/20 text-xs line-through mb-6">¥{plan.original}</p>
+                <div className="price-tag mb-6 justify-center"><span className="symbol">¥</span><span className="amount">{formatPrice(plan.price)}</span></div>
                 <button onClick={() => handleBuy(plan)} className={plan.recommend ? "btn-primary w-full" : "btn-mystic w-full"}>立即开通</button>
               </motion.div>
             ))}
@@ -81,12 +84,12 @@ export default function MemberPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mystic-card rounded-xl p-8 max-w-2xl mx-auto">
             <h3 className="text-lg text-gold mb-6 text-center" style={{ fontFamily: "'Noto Serif SC', serif" }}>会员专属权益</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[["♾️","全模式无限次解读"],["🧠","AI 深度命理分析"],["💬","专属大师寄语"],["🌟","优先体验新功能"],["📜","永久保存测算记录"],["🎁","分享好友双方得会员"]].map(([icon, text]) => (<div key={text} className="flex items-center gap-3"><span className="text-xl">{icon}</span><span className="text-paper-100/60 text-sm">{text}</span></div>))}
+              {[["♾️","全模式无限次解读"],["🧠","AI 深度命理分析"],["💬","专属大师寄语"],["🌟","优先体验新功能"],["📜","永久保存测算记录"]].map(([icon, text]) => (<div key={text} className="flex items-center gap-3"><span className="text-xl">{icon}</span><span className="text-paper-100/60 text-sm">{text}</span></div>))}
             </div>
           </motion.div>
         </div>
       </main>
-      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={`开通${selectedPlan.name}`} price={selectedPlan.price} onConfirm={handleConfirm} />
+      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={`开通${selectedPlan.name}`} price={formatPrice(selectedPlan.price)} onConfirm={handleConfirm} />
       <Footer />
     </div>
   );

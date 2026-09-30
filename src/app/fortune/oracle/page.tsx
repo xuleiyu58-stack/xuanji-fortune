@@ -40,7 +40,6 @@ export default function OraclePage() {
           icon="🏮"
           description="千年古刹，AI 解签。以典故为引，以智慧为舟，为困惑中的你指点迷津。"
           fields={FIELDS}
-          price="5.8"
         />
       </main>
       <Footer />

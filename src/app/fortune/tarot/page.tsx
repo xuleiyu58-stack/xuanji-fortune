@@ -40,7 +40,6 @@ export default function TarotPage() {
           icon="🃏"
           description="三张牌阵，AI 解牌。融合东西方占卜智慧，用塔罗的古老智慧解答现代困惑。"
           fields={FIELDS}
-          price="8.8"
         />
       </main>
       <Footer />

@@ -70,7 +70,6 @@ export default function BaziPage() {
           icon="📅"
           description="子平八字，紫微斗数。填写出生信息，AI 为您排盘分析终身命局。"
           fields={FIELDS}
-          price="18.8"
         />
       </main>
       <Footer />

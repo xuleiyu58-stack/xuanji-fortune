@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import PaymentModal from "./PaymentModal";
 import QuotaBanner from "./QuotaBanner";
 import { consumeFreeQuota, isMember, saveReading, getFreeQuota } from "@/lib/store";
+import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
 
 interface Field {
   name: string;
@@ -21,10 +22,11 @@ interface Props {
   icon: string;
   description: string;
   fields: Field[];
-  price: string;
 }
 
-export default function FortuneForm({ mode, title, icon, description, fields, price }: Props) {
+export default function FortuneForm({ mode, title, icon, description, fields }: Props) {
+  const modeInfo = MODES[mode as Mode];
+  const price = formatPrice(modeInfo.price);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,7 +83,7 @@ export default function FortuneForm({ mode, title, icon, description, fields, pr
         {mode !== "daily" && (<div className="price-tag mt-4 justify-center"><span className="symbol">¥</span><span className="amount">{price}</span><span className="text-xs text-paper-100/40">/次</span>{member && <span className="text-xs text-gold-400 bg-gold-400/10 rounded px-2 py-0.5 ml-2">会员免费</span>}</div>)}
         {mode === "daily" && <span className="inline-block mt-4 text-xs text-jade-400 border border-jade-500/30 rounded px-3 py-1">每日3次免费体验</span>}
       </motion.div>
-      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={mode === "daily" ? "今日免费次数已用完" : title} price={mode === "daily" ? "28.8" : price} onConfirm={handlePaymentConfirm} />
+      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={mode === "daily" ? "今日免费次数已用完" : title} price={formatPrice(MEMBER_PLANS[0].price)} onConfirm={handlePaymentConfirm} />
       {!result && (
         <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} onSubmit={handleSubmit} className="mystic-card rounded-lg p-8 space-y-6">
           {fields.map((field) => (
@@ -97,9 +99,9 @@ export default function FortuneForm({ mode, title, icon, description, fields, pr
             </div>
           ))}
           <button type="submit" disabled={loading} className={mode === "daily" && quota > 0 ? "btn-primary w-full" : mode === "daily" ? "btn-vermillion w-full" : "btn-vermillion w-full"}>
-            {loading ? (<span className="flex items-center justify-center gap-3"><span className="mystic-loader !w-5 !h-5" />天机推演中...</span>) : mode === "daily" && quota > 0 ? `免费获取今日运势（剩余 ${quota} 次）` : mode === "daily" ? `¥28.8 开通会员无限次` : member ? "会员免费测算" : `¥${price} 立即测算`}
+            {loading ? (<span className="flex items-center justify-center gap-3"><span className="mystic-loader !w-5 !h-5" />天机推演中...</span>) : mode === "daily" && quota > 0 ? `免费获取今日运势（剩余 ${quota} 次）` : mode === "daily" ? `¥${formatPrice(MEMBER_PLANS[0].price)} 开通会员无限次` : member ? "会员免费测算" : `¥${price} 立即测算`}
           </button>
-          {mode !== "daily" && !member && (<p className="text-center text-paper-100/20 text-xs">开通会员 ¥28.8/月，全模式无限次使用 · <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">立即开通</button></p>)}
+          {mode !== "daily" && !member && (<p className="text-center text-paper-100/20 text-xs">开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}/月，全模式无限次使用 · <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">立即开通</button></p>)}
         </motion.form>
       )}
       {loading && (<div className="mystic-card rounded-lg p-12 text-center"><div className="mystic-loader mx-auto mb-6" /><p className="text-gold-300 text-lg" style={{ fontFamily: "'Noto Serif SC', serif" }}>天机推演中...</p><p className="text-paper-100/30 text-sm mt-2">AI 正在为您排盘解读，请稍候</p></div>)}

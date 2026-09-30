@@ -53,7 +53,6 @@ export default function LovePage() {
           icon="💑"
           description="月老牵线，命盘合婚。AI 为您解读两人缘分深浅、性格匹配、未来走向。"
           fields={FIELDS}
-          price="36.9"
         />
       </main>
       <Footer />
