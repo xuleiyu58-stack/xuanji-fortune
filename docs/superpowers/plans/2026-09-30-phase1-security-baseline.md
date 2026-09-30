@@ -11,7 +11,10 @@
 ## Global Constraints
 
 - Node 版本 ≥ 24（本机 v24.16.0）—— 依赖其原生 TypeScript 类型擦除能力
-- `package.json` 必须设 `"type": "module"`；已实测 `next build` 在此设置下通过
+- `package.json` 设 `"type": "module"`；已实测 `next build` 在此设置下通过
+- 设 `type: module` 的理由是**消除 `MODULE_TYPELESS_PACKAGE_JSON` 警告、避免多余的重解析开销、让模块语义确定**，而不是"否则测试跑不起来"。本项目实测：不加它测试同样全绿（Node 24 会探测模块语法并自动按 ESM 重解析），只是输出不干净
+- **测试脚本必须是裸 `node --test`**。Node 24 不再把位置参数当作递归搜索的目录，写 `node --test tests/` 会以 `MODULE_NOT_FOUND` 硬失败（已实测）
+- **原生类型擦除的三条限制**，后续任务的测试写法必须遵守：相对导入必须写显式 `.ts` 扩展名；不认 `@/*` 别名；无法 `import` `.tsx`。这三条已被下面的设计规避 —— 纯函数模块零依赖、测试只做相对路径导入、需要检查 `.tsx` 时按文本读取而非导入
 - **被单元测试直接引入的模块必须是零 import**（`pricing.ts` / `validation.ts` / `quota-policy.ts` / `sanitize.ts`）；配置一律作为函数参数注入
 - 应用代码之间沿用既有 `@/` 别名，不写扩展名
 - 测试文件放 `tests/`，扩展名 `.mts`，引用源文件时写显式 `.ts` 扩展名
@@ -47,28 +50,50 @@
 - Consumes: 无
 - Produces: `npm test` 能执行 `tests/` 下所有 `.test.mjs` 与 `.test.mts` 文件
 
-- [ ] **Step 1: 写一个会失败的冒烟测试**
+- [ ] **Step 1: 写一个冒烟测试**
 
-创建 `tests/smoke.test.mts`：
+冒烟测试要**跨模块 import 一个 `.ts` 文件** —— 这正是后续任务里每个测试都会做的事，用它来证明这条链路真的通。
+
+创建辅助模块 `tests/smoke-helper.ts`：
+
+```ts
+// 临时文件：本任务结束时连同冒烟测试一并删除
+export function add(a: number, b: number): number {
+  return a + b;
+}
+```
+
+创建测试 `tests/smoke.test.mts`：
 
 ```ts
 import test from "node:test";
 import assert from "node:assert/strict";
+import { add } from "./smoke-helper.ts";
 
 test("能直接跑 TypeScript 测试", () => {
-  const n: number = 42;
-  assert.equal(n, 42);
+  assert.equal(add(1, 2), 3);
 });
 ```
 
-- [ ] **Step 2: 运行，确认失败**
+- [ ] **Step 2: 运行，确认问题存在**
 
 Run: `npm test`
-Expected: FAIL —— `Cannot use import statement outside a module`，因为项目 `package.json` 尚未设置 `type: module`
+Expected: 测试 **通过（3/3）**，但输出里带一条警告：
+
+```
+[MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///.../tests/smoke-helper.ts
+is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to .../package.json
+```
+
+> **这一步不会报错。** Node 24 的模块语法探测会让它自动按 ESM 重新解析，所以测试照样全绿。要修的是那条警告和多余的重解析开销，不是错误。
+>
+> 已实测确认：只有"最近处根本没有 `package.json`"时才会退化成 `SyntaxError: Cannot use import statement outside a module`。本仓库有 `package.json`，所以碰不到那个错误 —— 不要为了凑出一个红色状态去改测试。
 
 - [ ] **Step 3: 修改 package.json**
 
-把 `package.json` 改成（只加 `type`、改 `test` 脚本，其余不动）：
+只加 `"type": "module"` 一项，**`test` 脚本保持裸 `node --test` 不变**：
 
 ```json
 {
@@ -81,14 +106,16 @@ Expected: FAIL —— `Cannot use import statement outside a module`，因为项
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/"
+    "test": "node --test"
   },
 ```
+
+> **不要**把脚本写成 `node --test tests/`。Node 24 已不再把位置参数当作递归搜索的目录，那样写会以 `MODULE_NOT_FOUND` 硬失败（已实测）。裸 `node --test` 才会按默认模式递归发现 `tests/` 下的 `*.test.mts`。
 
 - [ ] **Step 4: 运行，确认通过**
 
 Run: `npm test`
-Expected: PASS —— 应当看到 3 个通过的测试（新增的冒烟测试 + 原有的 2 个）
+Expected: PASS —— 3 个测试通过（新增的冒烟测试 + 原有的 2 个），**且输出里不再有 `MODULE_TYPELESS_PACKAGE_JSON` 警告**。测试输出必须干净，不能有 stray warning。
 
 - [ ] **Step 5: 确认 Next 构建没被 `type: module` 破坏**
 
@@ -100,7 +127,7 @@ Expected: 构建成功，输出 11 条路由（`/`、`/api/fortune`、5 个 fort
 - [ ] **Step 6: 删除冒烟测试并提交**
 
 ```bash
-rm tests/smoke.test.mts
+rm tests/smoke.test.mts tests/smoke-helper.ts
 git add package.json
 git commit -m "🔧 测试基础设施：启用 type:module，支持直接跑 TypeScript 测试"
 ```
