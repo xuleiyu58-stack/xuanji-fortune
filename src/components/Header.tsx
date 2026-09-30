@@ -39,8 +39,8 @@ export default function Header() {
             <Link href="/fortune/oracle" className="text-paper-100/70 hover:text-gold-300 transition-colors text-sm tracking-wider">灵签求签</Link>
           </div>
           <div className="flex items-center gap-3">
-            {member && <Link href="/member" className="hidden sm:inline text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">👑 会员</Link>}
-            <button onClick={() => setHistoryOpen(true)} className="relative text-paper-100/50 hover:text-gold-300 transition-colors text-sm" title="测算历史">📜{hasReadings && <span className="absolute -top-1 -right-1 w-2 h-2 bg-vermillion-400 rounded-full" />}</button>
+            {member && <Link href="/member" className="hidden sm:inline text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员</Link>}
+            <button onClick={() => setHistoryOpen(true)} className="relative text-paper-100/50 hover:text-gold-300 transition-colors text-sm tracking-wider" title="测算历史">历史{hasReadings && <span className="absolute -top-1 -right-1 w-2 h-2 bg-vermillion-400 rounded-full" />}</button>
             <Link href="/fortune/daily" className="hidden md:inline-block btn-mystic !py-2 !px-5 !text-sm">今日运势</Link>
           </div>
           <button className="md:hidden flex flex-col gap-1.5 p-2" onClick={() => setOpen(!open)} aria-label="Menu">
