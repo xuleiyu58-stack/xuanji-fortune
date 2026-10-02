@@ -3,21 +3,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { getHistory, deleteReading, clearHistory, Reading } from "@/lib/store";
 import { useState, useEffect } from "react";
-import Glyph, { MODE_TRIGRAM } from "./Glyph";
+import Glyph, { CHART_TRIGRAM } from "./Glyph";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSelect: (reading: Reading) => void;
 }
-
-const MODE_LABELS: Record<string, string> = {
-  daily: "今日运势",
-  bazi: "八字命理",
-  love: "姻缘配对",
-  tarot: "AI 塔罗",
-  oracle: "灵签求签",
-};
 
 export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
   const [readings, setReadings] = useState<Reading[]>([]);
@@ -65,7 +57,7 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
                   className="text-lg text-gold"
                   style={{ fontFamily: "'Noto Serif SC', serif" }}
                 >
-                  测算历史
+                  排盘历史
                 </h3>
                 <button
                   onClick={onClose}
@@ -77,10 +69,10 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
 
               {readings.length === 0 ? (
                 <div className="text-center py-12">
-                  <div className="flex justify-center mb-4 text-gold-400/25"><Glyph trigram="qian" size={40} /></div>
-                  <p className="text-paper-100/45 text-sm">暂无测算记录</p>
+                  <div className="flex justify-center mb-4 text-gold-400/25"><Glyph trigram={CHART_TRIGRAM} size={40} /></div>
+                  <p className="text-paper-100/45 text-sm">暂无排盘记录</p>
                   <p className="text-paper-100/20 text-xs mt-1">
-                    完成一次测算后，记录将显示在这里
+                    完成一次排盘后，记录将显示在这里
                   </p>
                 </div>
               ) : (
@@ -100,9 +92,11 @@ export default function HistoryDrawer({ open, onClose, onSelect }: Props) {
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <Glyph trigram={MODE_TRIGRAM[r.mode] ?? "qian"} size={22} />
+                              <Glyph trigram={CHART_TRIGRAM} size={22} />
+                              {/* 用存下来的 title，而不是按 mode 查表 ——
+                                  模式删到只剩一个之后，查表只剩一条，且会让转换前存下的旧记录显示错名 */}
                               <span className="text-paper-100/60 text-xs">
-                                {MODE_LABELS[r.mode] || r.mode}
+                                {r.title || "八字命理"}
                               </span>
                               <span className="text-paper-100/20 text-xs">
                                 {new Date(r.createdAt).toLocaleDateString("zh-CN")}

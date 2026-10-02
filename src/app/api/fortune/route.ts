@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getFortune } from "@/lib/ai";
+import { readBazi } from "@/lib/ai";
 import { MODES, FREE_DAILY_QUOTA, FREE_IP_DAILY_LIMIT } from "@/lib/pricing";
 import { validateFortuneRequest } from "@/lib/validation";
 import { decideQuota } from "@/lib/quota-policy";
@@ -81,10 +81,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await getFortune(checked.mode, checked.input);
+  const result = await readBazi(checked.input);
 
   if (!result.success) {
-    // 失败不记账：服务端出错不该由用户承担额度
+    // 失败不记账：服务端出错不该由用户承担额度。
+    // 注意 result 里可能仍带着排好的命盘 —— 解读失败不该让人连盘都看不见。
     return withDeviceCookie(
       NextResponse.json(result, { status: 500 }),
       deviceId,

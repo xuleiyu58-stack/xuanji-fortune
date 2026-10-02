@@ -1,26 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import HistoryDrawer from "./HistoryDrawer";
 import { getHistory, isMember } from "@/lib/store";
 
-// 导航项统一在这里定义，桌面端与移动端共用，避免两处漂移。
-// 「首页」是必需的：全站六个页面，此前回首页只能点左上角那两个字。
-const NAV = [
-  { href: "/", label: "首页" },
-  { href: "/fortune/daily", label: "今日运势" },
-  { href: "/fortune/bazi", label: "八字命理" },
-  { href: "/fortune/love", label: "姻缘配对" },
-  { href: "/fortune/tarot", label: "AI 塔罗" },
-  { href: "/fortune/oracle", label: "灵签求签" },
-];
-
+/**
+ * 全站只有一个页面了（首页即排盘工具），导航项随之消失。
+ *
+ * 原先这里是六项 NAV，桌面端与移动端各渲染一遍、还要一套汉堡菜单来装它 ——
+ * 模式删到一个之后，那套东西就没有存在理由了。留下品牌、历史、会员三样。
+ */
 export default function Header() {
-  const pathname = usePathname();
-  const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [hasReadings, setHasReadings] = useState(false);
   const [member, setMember] = useState(false);
@@ -44,55 +35,12 @@ export default function Header() {
             <span className="text-2xl" style={{ fontFamily: "'Ma Shan Zheng', cursive" }}>玄</span>
             <span className="text-lg font-semibold text-gold hidden sm:inline" style={{ fontFamily: "'Noto Serif SC', serif" }}>机</span>
           </Link>
-          <div className="hidden md:flex items-center gap-6">
-            {NAV.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`text-sm tracking-wider transition-colors ${active ? "text-gold-300" : "text-paper-100/70 hover:text-gold-300"}`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 sm:gap-5">
             {member && <Link href="/member" className="hidden sm:inline text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员</Link>}
-            <button onClick={() => setHistoryOpen(true)} className="relative text-paper-100/50 hover:text-gold-300 transition-colors text-sm tracking-wider" title="测算历史">历史{hasReadings && <span className="absolute -top-1 -right-1 w-2 h-2 bg-vermillion-400 rounded-full" />}</button>
-            <Link href="/fortune/daily" className="hidden md:inline-block btn-mystic !py-2 !px-5 !text-sm">今日运势</Link>
+            <button onClick={() => setHistoryOpen(true)} className="relative text-paper-100/50 hover:text-gold-300 transition-colors text-sm tracking-wider" title="排盘历史">历史{hasReadings && <span className="absolute -top-1 -right-1 w-2 h-2 bg-vermillion-400 rounded-full" />}</button>
+            <Link href="/" className="btn-mystic !py-2 !px-5 !text-sm">开始排盘</Link>
           </div>
-          <button className="md:hidden flex flex-col gap-1.5 p-2" onClick={() => setOpen(!open)} aria-label="Menu">
-            <motion.span animate={open ? { rotate: 45, y: 6 } : { rotate: 0, y: 0 }} className="w-5 h-0.5 bg-gold-300 block" />
-            <motion.span animate={open ? { opacity: 0 } : { opacity: 1 }} className="w-5 h-0.5 bg-gold-300 block" />
-            <motion.span animate={open ? { rotate: -45, y: -6 } : { rotate: 0, y: 0 }} className="w-5 h-0.5 bg-gold-300 block" />
-          </button>
         </nav>
-        <AnimatePresence>
-          {open && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden glass border-t border-gold-300/10 overflow-hidden">
-              <div className="px-6 py-4 flex flex-col gap-3">
-                {NAV.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    aria-current={pathname === item.href ? "page" : undefined}
-                    className={`transition-colors py-2 text-sm tracking-wider ${pathname === item.href ? "text-gold-300" : "text-paper-100/80 hover:text-gold-300"}`}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-                <div className="border-t border-gold-300/10 pt-3 mt-1">
-                  <button onClick={() => { setOpen(false); setHistoryOpen(true); }} className="text-paper-100/60 hover:text-gold-300 transition-colors py-2 text-sm tracking-wider w-full text-left">测算历史{hasReadings && <span className="ml-2 text-xs text-vermillion-400">●</span>}</button>
-                  {member && <Link href="/member" className="inline-block mt-2 text-xs text-gold-400 bg-gold-400/10 rounded-full px-2.5 py-0.5 border border-gold-400/20">会员专享</Link>}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </header>
       <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} onSelect={() => {}} />
     </>

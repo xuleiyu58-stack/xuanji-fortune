@@ -1,21 +1,17 @@
 export const MAX_SHORT_FIELD = 200;
 export const MAX_LONG_FIELD = 500;
 
-/** 每个模式接受的字段。白名单之外的一律丢弃，防止脏数据进入 prompt。 */
+/**
+ * 每个模式接受的字段。白名单之外的一律丢弃，防止脏数据进入 prompt。
+ *
+ * `question` 是「想了解的方向」。它此前不在这份白名单里 —— 表单收了，服务端却把它丢掉，
+ * 用户选了「事业」和选「全面分析」拿到的解读一模一样。补上。
+ */
 export const MODE_FIELDS: Record<string, readonly string[]> = {
-  daily: [],
-  oracle: ["concern"],
-  bazi: ["birthDate", "birthTime", "gender"],
-  tarot: ["question"],
-  // 合婚要排两张盘，故两个人的日期/时辰/性别都要收，自由文本解析太脆已弃用
-  love: [
-    "person1Date", "person1Time", "person1Gender",
-    "person2Date", "person2Time", "person2Gender",
-    "relationship", "question",
-  ],
+  bazi: ["birthDate", "birthTime", "gender", "question"],
 };
 
-const LONG_FIELDS: readonly string[] = ["question", "concern"];
+const LONG_FIELDS: readonly string[] = ["question"];
 
 export type ValidationOutcome =
   | { ok: true; mode: string; input: Record<string, string> }

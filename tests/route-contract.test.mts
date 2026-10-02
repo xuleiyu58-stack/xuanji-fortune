@@ -27,14 +27,14 @@ test("路由使用输入校验，而不是直接取 body", () => {
 
 test("额度判定发生在调用 AI 之前", () => {
   const iQuota = src.indexOf("decideQuota(counts");
-  const iAi = src.indexOf("await getFortune(");
+  const iAi = src.indexOf("await readBazi(");
   assert.ok(iQuota >= 0, "未调用 decideQuota");
   assert.ok(iAi >= 0, "未调用 getFortune");
   assert.ok(iQuota < iAi, "必须先判额度再调用 AI，否则限流拦不住任何请求");
 });
 
 test("只在 AI 成功之后才记账", () => {
-  const iAi = src.indexOf("await getFortune(");
+  const iAi = src.indexOf("await readBazi(");
   const iBump = src.indexOf("await bumpUsage(");
   assert.ok(iBump >= 0, "未调用 bumpUsage");
   assert.ok(iAi < iBump, "记账必须在 AI 调用之后 —— 失败不该扣用户额度");

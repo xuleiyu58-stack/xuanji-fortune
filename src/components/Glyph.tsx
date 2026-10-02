@@ -18,14 +18,13 @@ const BARS: Record<Trigram, readonly [boolean, boolean, boolean]> = {
   zhen: [false, false, true], // 震 ☳ 雷
 };
 
-/** 测算模式 → 卦。键与 `pricing.ts` 的 `MODES` 保持一致，此处不 import 以保持组件零依赖。 */
-export const MODE_TRIGRAM: Record<string, Trigram> = {
-  daily: "qian", // 天行健 —— 每日之势
-  bazi: "kun", // 地势坤 —— 命局之基，与乾成对
-  tarot: "li", // 离为火 —— 三爻成象，中爻断者逆位
-  love: "dui", // 兑为泽 —— 主悦，姻缘所系
-  oracle: "zhen", // 震为雷 —— 动，签筒摇动
-};
+/**
+ * 全站只做八字，命盘取坤 ——「地势坤，君子以厚德载物」，与命局之基相称。
+ *
+ * 曾有一张 MODE_TRIGRAM 把五种测算各配一卦；模式删到只剩一个之后，
+ * 那张表就只剩一行，是纯粹的多余间接层，一并去掉。
+ */
+export const CHART_TRIGRAM: Trigram = "kun";
 
 interface GlyphProps {
   trigram: Trigram;

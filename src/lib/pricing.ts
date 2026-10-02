@@ -2,10 +2,11 @@ export const FREE_DAILY_QUOTA = 3;
 export const FREE_IP_DAILY_LIMIT = 6;
 /** 兑换接口按 IP 的每日尝试上限。80 bit 的码本就爆不了，这层防的是脚本噪声。 */
 export const REDEEM_IP_DAILY_LIMIT = 10;
-/** 单次通行证的有效天数。¥3.8 买的一次，不该永远躺在浏览器里。 */
+/** 单次通行证的有效天数。买的一次解读，不该永远躺在浏览器里。 */
 export const SINGLE_PASS_DAYS = 7;
 
-export type Mode = "daily" | "oracle" | "bazi" | "tarot" | "love";
+/** 全站只做八字一个产品。 */
+export type Mode = "bazi";
 
 export interface ModeInfo {
   title: string;
@@ -13,14 +14,10 @@ export interface ModeInfo {
   price: number;
 }
 
-// 刻意不放 icon 字段：模式的图形是卦象爻线，由 components/Glyph.tsx 的
-// MODE_TRIGRAM 提供。emoji 曾放在这里，会被顺手再引回来。
+// 刻意不放 icon 字段：图标语言是卦象爻线，在 components/Glyph.tsx 里。
+// emoji 曾放在这里，一旦有了字段就会被顺手引回来。
 export const MODES: Record<Mode, ModeInfo> = {
-  daily: { title: "今日运势", price: 0 },
-  oracle: { title: "灵签求签", price: 0 },
   bazi: { title: "八字命理", price: 6.6 },
-  tarot: { title: "AI 塔罗", price: 3.8 },
-  love: { title: "姻缘配对", price: 8.8 },
 };
 
 export interface MemberPlan {

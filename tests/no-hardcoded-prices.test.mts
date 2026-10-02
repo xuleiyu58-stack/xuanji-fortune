@@ -51,23 +51,19 @@ test("监视范围覆盖 src 下除 pricing.ts 外的全部 ts/tsx", () => {
   assert.ok(TARGETS.length >= 9, `监视范围疑似塌缩，只扫到 ${TARGETS.length} 个文件`);
 });
 
-// 递归遍历接管之前，监视清单是手写的这九个文件。`TARGETS.length >= 9` 挡不住
+// 递归遍历接管之前，监视清单是手写的一份文件表。`TARGETS.length >= 9` 挡不住
 // "遍历不再下探某个子目录"：比如 walk 漏掉 components/ 时，src 下仍有十几个文件，
 // 总数照样 >= 9，上面两条 includes 也仍然通过 —— 覆盖范围无声缩水而测试全绿。
-// 所以这里把最初的九个路径逐个点名。它们分布在 app/、app/fortune/、components/
-// 三个不同层级，任何一层不再被下探都会立刻变红。
-// 记个数备查：写下这段时 TARGETS 共 21 个文件（其中 components/ 占 9 个）。
-// 数字只作参考，别把它断言成硬上限 —— 新增页面应当让这个数变大。
+// 所以这里把跨层级的路径逐个点名，任何一个层级不再被下探都会立刻变红。
+//
+// 2026-10-02：全站收敛为八字单产品，原先 app/fortune/ 下的五个页面已删除，
+// 名单随之收窄到剩下的两个层级。护栏本身没有失效，但下探面确实变小了 ——
+// 记个数备查：写下这段时 TARGETS 共 22 个文件（其中 components/ 占 8 个）。
+// 数字只作参考，别把它断言成硬上限 —— 新增文件应当让这个数变大。
 const ORIGINAL_TARGETS = [
   "app/page.tsx",
   "app/member/page.tsx",
-  "components/QuotaBanner.tsx",
   "components/FortuneForm.tsx",
-  "app/fortune/daily/page.tsx",
-  "app/fortune/oracle/page.tsx",
-  "app/fortune/bazi/page.tsx",
-  "app/fortune/tarot/page.tsx",
-  "app/fortune/love/page.tsx",
 ];
 
 test("递归遍历没有漏掉最初清单里的任何一个文件", () => {
@@ -94,21 +90,10 @@ test("价格数字不得直接写进 amount 容器", () => {
   }
 });
 
-test("免费判定必须从 pricing 派生，不得写死模式名", () => {
-  // 曾经这里写死 `mode === "daily"`，而 pricing 里灵签也是 0 元 ——
-  // 结果首页说灵签免费、按钮显示「¥0 立即测算」、点下去却弹收款码。
-  // 以后再加免费模式（比如姻缘限免），只要不改这个判断就会重演，所以钉住。
-  const form = read("components/FortuneForm.tsx");
-  assert.doesNotMatch(form, /mode === "daily"/, "免费判定写死了 daily");
-  assert.doesNotMatch(form, /mode !== "daily"/, "付费判定写死了 daily");
-  assert.match(form, /isFreeMode/, "应通过 pricing 的 isFreeMode 判断免费与否");
-});
-
-test("不得再向 FortuneForm 传 price 属性", () => {
-  for (const rel of TARGETS.filter((f) => f.startsWith("app/fortune/"))) {
-    assert.doesNotMatch(read(rel), /price=/, `${rel} 仍在传 price`);
-  }
-});
+// 曾有一条「免费判定必须从 pricing 派生」的守卫，钉的是 FortuneForm 里的 `isFreeMode` 用法。
+// 八字是唯一模式且为付费，站内已不存在免费层，那条守卫的前提随之消失，故移除。
+// 若将来重新引入免费档（例如排盘免费、解读收费），请连同新的判定方式一起把守卫加回来，
+// 不要靠写死模式名或写死价格。
 
 // 价格以数据字面量的形式出现：`{ name: "月卡", price: "28.8" }`。
 // 前三条规则都看不见它 —— ¥ 在隔壁 span 里、amount 容器里是 `{`、写的是 `price:` 而不是 `price=`。
