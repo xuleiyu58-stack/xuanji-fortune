@@ -64,6 +64,9 @@
 | `src/lib/quota-policy.ts` | 由 `access.ts` 取代。两模块职责重叠必然漂移；其测试迁移进 `access.test.mts` |
 | `tests/quota-policy.test.mts` | 同上 |
 
+> 两者都在 **Task 5** 删除，不在 Task 2。路由到 Task 5 才切到 `decideAccess`，提前删会让
+> Task 2–4 之间每个任务边界都留下编译不过的仓库，任务无法独立验收。
+
 ---
 
 ### Task 1: 凭证模块
@@ -405,12 +408,16 @@ git commit -m "🔑 新增权益凭证：HMAC 签名 cookie，验签不查库"
 
 ### Task 2: 放行判定
 
-把 `quota-policy.ts` 的判定扩成「凭证优先」。**这一步会删掉一个模块并迁移它的测试** —— 两个职责重叠的模块留着必然漂移。
+把 `quota-policy.ts` 的判定扩成「凭证优先」。原来的测试**迁移**进 `access.test.mts` 并扩展凭证分支；
+旧模块本身留到 Task 5 再删（那时路由才切换过去，见下面的说明）。
 
 **Files:**
 - Create: `src/lib/access.ts`
 - Test: `tests/access.test.mts`
-- Delete: `src/lib/quota-policy.ts`、`tests/quota-policy.test.mts`
+
+> **`quota-policy.ts` 的移除不在这里做。** 它此刻仍被 `route.ts` 引用，删掉会让仓库编译不过 ——
+> 那样 Task 2、3、4 之间每个边界都留着一个红着的构建，任务无法独立验收。
+> 改到 Task 5：先把路由切到 `decideAccess`，再删旧模块。
 
 **Interfaces:**
 - Consumes: 无（零 import，保持一致）
@@ -684,21 +691,12 @@ export function decideAccess(
 Run: `npm test`
 Expected: PASS —— 14 条 access 测试全绿
 
-- [ ] **Step 5: 删除被取代的模块与它的测试**
+- [ ] **Step 5: 确认接入前一切照旧**
 
-`access.ts` 完全覆盖了 `decideQuota` 的职责。留着两个判定模块，将来改一处忘另一处就是线上事故。
+Run: `npm test && npx tsc --noEmit`
+Expected: 全部 PASS，tsc 无输出。`access.ts` 此刻还没有消费者 —— 这是刻意的，路由在 Task 5 才切过去。
 
-```bash
-git rm src/lib/quota-policy.ts tests/quota-policy.test.mts
-```
-
-- [ ] **Step 6: 确认没有残留引用**
-
-Run: `grep -rn "quota-policy\|decideQuota" src/ tests/`
-Expected: 仅 `src/app/api/fortune/route.ts` 与 `tests/route-contract.test.mts` 有输出 —— 这两处在 Task 5 改。
-**注意**：此时 `npx tsc --noEmit` 会报错，这是预期的，Task 5 修完才恢复。不要在这个提交里顺手动路由。
-
-- [ ] **Step 7: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
 git add src/lib/access.ts tests/access.test.mts
@@ -1172,7 +1170,7 @@ PASS_SECRET=
 - [ ] **Step 8: 类型检查**
 
 Run: `npx tsc --noEmit`
-Expected: 只剩 `src/app/api/fortune/route.ts` 找不到 `@/lib/quota-policy` 这一条错误（Task 5 修）。
+Expected: 无错误输出。`quota-policy.ts` 此刻仍在仓库里，路由也还没切换 —— 这一步不该有任何红。
 
 - [ ] **Step 9: 确认脚本语法正确**
 
@@ -1361,7 +1359,7 @@ export async function GET(req: NextRequest) {
 - [ ] **Step 3: 类型检查**
 
 Run: `npx tsc --noEmit`
-Expected: 只剩 `src/app/api/fortune/route.ts` 那条既有的 `quota-policy` 错误（Task 5 修）
+Expected: 无错误输出
 
 - [ ] **Step 4: 端到端冒烟（内存兜底）**
 
@@ -1433,6 +1431,7 @@ git commit -m "🎟️ 新增兑换与权益接口：一码一次，签发签名
 **Files:**
 - Modify: `src/app/api/fortune/route.ts`
 - Modify: `tests/route-contract.test.mts`
+- Delete: `src/lib/quota-policy.ts`、`tests/quota-policy.test.mts`（路由切过去之后，旧模块才没人用）
 
 **Interfaces:**
 - Consumes: Task 1 的 `verify` / `sign` / `consumePass` / `toSummary`；Task 2 的 `decideAccess`；Task 3 的 `passSecret`
@@ -1636,12 +1635,26 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 4: 运行测试与类型检查**
+- [ ] **Step 4: 删除被取代的模块与它的测试**
+
+路由已切到 `decideAccess`，`decideQuota` 至此无人引用。`access.ts` 完全覆盖了它的职责 ——
+留着两个判定模块，将来改一处忘另一处就是线上事故。
+
+```bash
+git rm src/lib/quota-policy.ts tests/quota-policy.test.mts
+```
+
+- [ ] **Step 5: 确认没有残留引用**
+
+Run: `grep -rn "quota-policy\|decideQuota" src/ tests/`
+Expected: 无输出
+
+- [ ] **Step 6: 运行测试与类型检查**
 
 Run: `npm test && npx tsc --noEmit`
-Expected: 全部 PASS，tsc 无输出（`quota-policy` 的残留引用至此清干净）
+Expected: 全部 PASS，tsc 无输出
 
-- [ ] **Step 5: 端到端验证放行与拒绝**
+- [ ] **Step 7: 端到端验证放行与拒绝**
 
 沿用 Task 4 的 `.env.local` 与开发服务器：
 
@@ -1672,15 +1685,16 @@ curl -s -b /tmp/xj2.txt -X POST localhost:3000/api/fortune \
 # 期望：{"success":false,"error":"该模式需激活后使用"}
 ```
 
-- [ ] **Step 6: 构建**
+- [ ] **Step 8: 构建**
 
 Run: `npx next build`
 Expected: 构建成功
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 9: 提交**
 
 ```bash
 git add src/app/api/fortune/route.ts tests/route-contract.test.mts
+git rm src/lib/quota-policy.ts tests/quota-policy.test.mts
 git commit -m "🔐 路由接入凭证：会员豁免额度，付费模式必须持证"
 ```
 
