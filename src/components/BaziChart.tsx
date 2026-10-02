@@ -77,12 +77,41 @@ export default function BaziChart({ chart }: { chart: Chart }) {
 
   return (
     <section className="mystic-card rounded-xl p-6 sm:p-8" aria-label="八字命盘">
-      <header className="flex flex-wrap items-baseline justify-between gap-2 mb-7">
+      <header className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
         <h3 className="text-lg text-gold" style={SERIF}>命盘</h3>
         <p className="text-paper-100/45 text-xs tracking-wider">
-          {chart.solarDate} {chart.birthTime} · 农历{chart.lunarDate} · 属{chart.zodiac}
+          {chart.solarDate} · 农历{chart.lunarDate} · 属{chart.zodiac}
         </p>
       </header>
+
+      {/* 时间是怎么定的，必须摆明 —— 时柱错了整张盘就错了，用户有权知道我们用了哪个时刻 */}
+      <div className="rounded-lg border border-gold-300/12 bg-mystic-800/40 px-4 py-3 mb-8">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="text-paper-100/45">出生时间</span>
+          <span className="text-paper-100/80 tabular-nums">{chart.clockTime}</span>
+          <span className="text-paper-100/35">
+            （{chart.calendar === "lunar" ? "农历输入，已换算为公历" : "阳历"}）
+          </span>
+          {chart.trueSolarTime ? (
+            <>
+              <span className="text-paper-100/30">→</span>
+              <span className="text-gold-300 tabular-nums">真太阳时 {chart.trueSolarTime}</span>
+              <span className="text-paper-100/45">
+                按{chart.birthPlace}的经度换算，差 {chart.solarOffsetMinutes} 分钟
+              </span>
+            </>
+          ) : (
+            <span className="text-paper-100/35">· 未填出生地，按钟表时间排</span>
+          )}
+        </div>
+        {chart.trueSolarCrossedDay && (
+          <p className="text-vermillion-400/80 text-xs mt-2 leading-relaxed">
+            真太阳时校正后跨了午夜，四柱按{" "}
+            <span className="text-vermillion-400">{chart.chartDateText}</span> 排定 ——
+            与上报的生日差一天，日柱因此不同。想对照钟表时间的排法，把出生地留空再排一次即可。
+          </p>
+        )}
+      </div>
 
       {/* ── 一句话结论：先让人知道自己是谁 ────────────────── */}
       <div className="rounded-lg border border-gold-500/25 bg-gold-500/[0.04] p-5 mb-8">

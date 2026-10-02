@@ -9,8 +9,19 @@ const styles = readFileSync(new URL("../src/app/globals.css", import.meta.url), 
 test("首页就是排盘工具页，直接给出出生信息表单", () => {
   // 单产品站不该再有"选一种测算方式"的目录页 —— 那一步纯粹是摩擦
   assert.match(page, /<FortuneForm/);
-  assert.match(page, /name: "birthDate"/);
-  assert.match(page, /name: "birthTime"/);
+  // 出生信息的字段住在专用的 BirthInput 里，不在首页
+  const form = readFileSync(new URL("../src/components/FortuneForm.tsx", import.meta.url), "utf8");
+  assert.match(form, /<BirthInput/, "FortuneForm 应渲染专用的出生信息表单");
+});
+
+test("出生信息表单支持阳历/农历两种历法", () => {
+  const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
+  assert.match(birth, /阳历（公历）/, "缺少阳历入口");
+  assert.match(birth, /农历（阴历）/, "缺少农历入口");
+  assert.match(birth, /农历年|aria-label="农历年"/, "农历应有年月日三个下拉");
+  assert.match(birth, /闰月/, "农历应有闰月选项");
+  // 农历只有 12 个月名，闰月靠勾选 —— 因为判断某年有无闰月要问服务端的库
+  assert.match(birth, /LUNAR_MONTHS/);
 });
 
 // 已删除的四个模式的字样不许再出现在任何用户可见的位置。
@@ -37,6 +48,19 @@ test("全 src 里不留指向已删除路由的链接", () => {
     const src = readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8");
     assert.doesNotMatch(src, /\/fortune\//, `${rel} 仍链向已删除的 /fortune/*`);
   }
+});
+
+test("出生地只用于真太阳时，且界面把这件事讲清楚了", () => {
+  const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
+  assert.match(birth, /真太阳时/, "选了出生地却不说明用途，用户不知道为什么要填");
+  assert.match(birth, /PLACE_NAMES/, "出生地应来自经度表，而不是自由文本");
+});
+
+test("命盘上须写明时间是怎么定的", () => {
+  const chart = readFileSync(new URL("../src/components/BaziChart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /出生时间/, "应说明排盘用的是哪个时刻");
+  assert.match(chart, /真太阳时/, "做了校正就必须显示出来");
+  assert.match(chart, /跨了午夜|trueSolarCrossedDay/, "跨日会改日柱，必须提示");
 });
 
 test("首页为减少动态效果的用户提供静态体验", () => {

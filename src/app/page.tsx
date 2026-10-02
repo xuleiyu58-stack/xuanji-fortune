@@ -7,44 +7,7 @@ import Particles from "@/components/Particles";
 import FortuneForm from "@/components/FortuneForm";
 import { Seal } from "@/components/Glyph";
 import { MODES, MEMBER_PLANS, formatPrice } from "@/lib/pricing";
-import { TIME_OPTIONS, GENDER_OPTIONS } from "@/lib/choices";
 import Link from "next/link";
-
-const FIELDS = [
-  {
-    name: "birthDate",
-    label: "出生日期",
-    type: "date" as const,
-    required: true,
-    placeholder: "请选择出生日期",
-  },
-  {
-    name: "birthTime",
-    label: "出生时辰",
-    type: "select" as const,
-    required: true,
-    options: TIME_OPTIONS,
-  },
-  {
-    name: "gender",
-    label: "性别",
-    type: "select" as const,
-    required: true,
-    options: GENDER_OPTIONS,
-  },
-  {
-    name: "question",
-    label: "想了解的方向（可选）",
-    type: "select" as const,
-    options: [
-      { value: "综合", label: "全面分析" },
-      { value: "事业", label: "事业发展" },
-      { value: "财运", label: "财富运势" },
-      { value: "感情", label: "感情婚姻" },
-      { value: "健康", label: "健康运势" },
-    ],
-  },
-];
 
 const monthPlan = MEMBER_PLANS[0];
 const yearPlan = MEMBER_PLANS[1];
@@ -106,8 +69,7 @@ export default function Home() {
         <FortuneForm
           mode="bazi"
           title="八字命理"
-          description="填写出生信息。四柱、五行、十神、大运由程序排定，AI 据此解读命局格局、性情禀赋、事业财运与感情婚姻。"
-          fields={FIELDS}
+          description="填写出生信息。四柱、藏干、十神、神煞、五行、大运由程序排定，AI 据此解读命局格局、性情禀赋、事业财运与感情婚姻。"
         />
       </section>
 

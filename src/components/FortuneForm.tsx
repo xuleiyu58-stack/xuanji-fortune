@@ -7,30 +7,25 @@ import { isMember, saveReading } from "@/lib/store";
 import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
 import Glyph, { CHART_TRIGRAM } from "./Glyph";
 import BaziChart from "./BaziChart";
+import BirthInput from "./BirthInput";
 import { renderFortuneHtml } from "@/lib/sanitize";
 // 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
 import type { BaziChart as BaziChartData } from "@/lib/bazi";
-
-interface Field {
-  name: string;
-  label: string;
-  type: "text" | "date" | "time" | "select" | "textarea";
-  placeholder?: string;
-  required?: boolean;
-  options?: readonly { value: string; label: string }[];
-}
 
 interface Props {
   mode: string;
   title: string;
   description: string;
-  fields: Field[];
 }
 
-export default function FortuneForm({ mode, title, description, fields }: Props) {
+export default function FortuneForm({ mode, title, description }: Props) {
   const modeInfo = MODES[mode as Mode];
   const price = formatPrice(modeInfo.price);
-  const [formData, setFormData] = useState<Record<string, string>>({});
+  // 历法默认阳历 —— 多数人记得的是身份证上的那个日期
+  const [formData, setFormData] = useState<Record<string, string>>({
+    calendar: "solar",
+    lunarLeap: "false",
+  });
   const [result, setResult] = useState<string | null>(null);
   const [chart, setChart] = useState<BaziChartData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,18 +83,7 @@ export default function FortuneForm({ mode, title, description, fields }: Props)
       <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} title={title} price={formatPrice(MEMBER_PLANS[0].price)} onConfirm={handlePaymentConfirm} />
       {!result && (
         <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} onSubmit={handleSubmit} className="mystic-card rounded-lg p-8 space-y-6">
-          {fields.map((field) => (
-            <div key={field.name}>
-              <label className="block text-paper-100/60 text-sm mb-2 tracking-wider">{field.label}{field.required && <span className="text-vermillion-400 ml-1">*</span>}</label>
-              {field.type === "select" ? (
-                <select value={formData[field.name] || ""} onChange={(e) => handleChange(field.name, e.target.value)} required={field.required} className="w-full bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 focus:border-gold-300/50 focus:outline-none transition-colors"><option value="">请选择</option>{field.options?.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select>
-              ) : field.type === "textarea" ? (
-                <textarea value={formData[field.name] || ""} onChange={(e) => handleChange(field.name, e.target.value)} placeholder={field.placeholder} rows={3} className="w-full bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 placeholder:text-paper-100/20 focus:border-gold-300/50 focus:outline-none transition-colors resize-none" />
-              ) : (
-                <input type={field.type} value={formData[field.name] || ""} onChange={(e) => handleChange(field.name, e.target.value)} placeholder={field.placeholder} required={field.required} className="w-full bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 placeholder:text-paper-100/20 focus:border-gold-300/50 focus:outline-none transition-colors" />
-              )}
-            </div>
-          ))}
+          <BirthInput value={formData} onChange={handleChange} />
           {/* 主操作恒为金色。红色留给真正的负向状态，不做"催你下一步"的颜色 */}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? (<span className="flex items-center justify-center gap-3"><span className="mystic-loader !w-5 !h-5" />天机推演中...</span>) : member ? "会员免费测算" : `¥${price} 立即排盘解读`}

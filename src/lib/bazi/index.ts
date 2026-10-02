@@ -14,7 +14,7 @@
  *   index.ts      本文件 —— 组装
  */
 
-import { Solar } from "lunar-typescript";
+import { Lunar, Solar } from "lunar-typescript";
 
 import {
   HIDE_WEIGHTS, ZHI_HIDE_GAN, changShengOf,
@@ -27,6 +27,8 @@ import {
 import { analyzeStrength, type StrengthResult } from "./strength.ts";
 import { analyzePattern, type PatternResult } from "./pattern.ts";
 import { findShenSha, type ShenShaHit } from "./shensha.ts";
+import { formatClock, toTrueSolarTime } from "./solar-time.ts";
+import { longitudeOf } from "./places.ts";
 
 export type { WuXing, ShiShen, ChangSheng, Zhi } from "./constants.ts";
 export { SHI_SHEN_MEANING } from "./relations.ts";
@@ -34,6 +36,8 @@ export { SHEN_SHA_CAVEAT } from "./shensha.ts";
 export type { StrengthResult } from "./strength.ts";
 export type { PatternResult } from "./pattern.ts";
 export type { ShenShaHit, ShenShaTone } from "./shensha.ts";
+export { PLACE_NAMES, longitudeOf } from "./places.ts";
+export { describeOffset } from "./solar-time.ts";
 
 const ELEMENT_ORDER: readonly WuXing[] = ["金", "木", "水", "火", "土"];
 
@@ -144,14 +148,41 @@ export interface BaziChart {
 
   startAgeText: string;
   daYun: DaYunStep[];
+
+  // ── 出生信息与时间校正 ──────────────────────────────
+  /** 输入的历法 */
+  calendar: Calendar;
+  /** 钟表时间（用户填的那个），`HH:MM` */
+  clockTime: string;
+  /** 真太阳时。未填出生地、或该地不在经度表里时为 undefined */
+  trueSolarTime?: string;
+  /** 真太阳时相对钟表时间的偏移（分钟） */
+  solarOffsetMinutes?: number;
+  /** 出生地 */
+  birthPlace?: string;
+  /** 校正后的时间是否落到了另一天 —— 会影响日柱，必须在界面上讲明白 */
+  trueSolarCrossedDay?: boolean;
+  /** 跨日时，排盘实际所用的日期（与上报的生日不同，界面需并列显示） */
+  chartDateText?: string;
 }
 
+export type Calendar = "solar" | "lunar";
+
 export interface BaziInput {
-  /** `YYYY-MM-DD` */
+  /**
+   * 阳历时为公历 `YYYY-MM-DD`；农历时为农历 `YYYY-MM-DD`，月份填 1-12。
+   * 闰月用 `lunarLeap` 单独表达，不塞进日期串 —— 日期串里写不下这个信息。
+   */
   birthDate: string;
   /** 形如「巳时 09:00-11:00」，或直接是 `HH:MM` */
   birthTime: string;
   gender: string;
+  /** 历法，默认阳历 */
+  calendar?: Calendar;
+  /** 该农历月是否为闰月 */
+  lunarLeap?: boolean;
+  /** 出生地城市名（见 places.ts）。填了才做真太阳时校正。 */
+  place?: string;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -186,6 +217,40 @@ function tally(pillars: Pillar[]): ElementTally[] {
   }));
 }
 
+/**
+ * 校验农历日期是否真实存在，返回 null 表示合法，否则返回一句人话。
+ *
+ * lunar-typescript 对不存在的闰月、超出的日数都会抛错，但报的是英文
+ * （"wrong lunar year 2023 month -3" / "only 29 days in lunar year 2023 month -2"）。
+ * 直接透给用户等于没报错，所以在这里翻译。
+ *
+ * 表单那边拿不到库（lunar-typescript 必须留在服务端），所以它做不了这层校验 ——
+ * 用户可能勾了「闰月」但那年并没有，或选了「三十」但当月只有二十九天。
+ */
+export function validateLunarDate(
+  year: number,
+  month: number,
+  day: number,
+  leap: boolean
+): string | null {
+  try {
+    Lunar.fromYmdHms(year, leap ? -month : month, day, 12, 0, 0);
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg.includes("wrong lunar year")) {
+      return leap
+        ? `农历 ${year} 年没有闰${month}月。请核对年份，或取消勾选「闰月」。`
+        : `农历 ${year} 年没有 ${month} 月，请核对年份。`;
+    }
+    const days = /only (\d+) days/.exec(msg);
+    if (days) {
+      return `农历${leap ? "闰" : ""}${month}月只有 ${days[1]} 天，请重新选择日期。`;
+    }
+    return "这个农历日期不存在，请核对后重试。";
+  }
+}
+
 export function buildBaziChart(input: BaziInput): BaziChart | null {
   const dateMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(input.birthDate.trim());
   if (!dateMatch) return null;
@@ -198,7 +263,65 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
   const day = Number.parseInt(dateMatch[3], 10);
   if (year < 1900 || year > 2100) return null;
 
-  const solar = Solar.fromYmdHms(year, month, day, time.hour, time.minute, 0);
+  const calendar: Calendar = input.calendar === "lunar" ? "lunar" : "solar";
+
+  // ── 第一步：把用户填的日期换算成公历 ──
+  // 排盘库只认公历。农历的闰月用**负数月份**表达（lunar-typescript 的口径：
+  // 农历 2023 年闰二月 = fromYmd(2023, -2, 1)），所以不能塞进日期串，单独一个字段。
+  let gy = year;
+  let gm = month;
+  let gd = day;
+  if (calendar === "lunar") {
+    // 非法农历日期（不存在的闰月、超出的日数）库会抛错 —— 这里兜住返回 null，
+    // 而不是让异常冒到路由变成 500。用户看到的应当是"日期不对"，不是"服务器出错"。
+    try {
+      const asLunar = Lunar.fromYmdHms(
+        year,
+        input.lunarLeap ? -month : month,
+        day,
+        time.hour,
+        time.minute,
+        0
+      );
+      const asSolar = asLunar.getSolar();
+      gy = asSolar.getYear();
+      gm = asSolar.getMonth();
+      gd = asSolar.getDay();
+    } catch {
+      return null;
+    }
+  }
+
+  // 用户报的那个日期 —— 也就是他身份证上的生日。校正跨日时，它和排盘用的日期会不同，
+  // 两笔都要留着，否则用户会觉得我们把他的生日算错了。
+  const birthYmd = { y: gy, m: gm, d: gd };
+
+  // ── 第二步：真太阳时校正 ──
+  // 校正作用在公历日期上（那才是"当地钟表读到的日期"）。
+  // 跨日时必须把日期一并退/进一天 —— 否则 00:30 出生的乌鲁木齐人日柱会整整错一天。
+  let hour = time.hour;
+  let minute = time.minute;
+  let trueSolarTime: string | undefined;
+  let solarOffsetMinutes: number | undefined;
+  let trueSolarCrossedDay: boolean | undefined;
+
+  const longitude = longitudeOf(input.place);
+  if (longitude !== undefined) {
+    const r = toTrueSolarTime(time.hour, time.minute, longitude, gy, gm, gd);
+    hour = r.hour;
+    minute = r.minute;
+    trueSolarTime = formatClock(r.hour, r.minute);
+    solarOffsetMinutes = r.offsetMinutes;
+    trueSolarCrossedDay = r.crossedDay;
+    if (r.dayShift !== 0) {
+      const shifted = new Date(Date.UTC(gy, gm - 1, gd + r.dayShift));
+      gy = shifted.getUTCFullYear();
+      gm = shifted.getUTCMonth() + 1;
+      gd = shifted.getUTCDate();
+    }
+  }
+
+  const solar = Solar.fromYmdHms(gy, gm, gd, hour, minute, 0);
   const lunar = solar.getLunar();
   const ec = lunar.getEightChar();
 
@@ -279,13 +402,18 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
       };
     });
 
+  // 展示用的农历日期，取「用户报的那个生日」而非排盘日 —— 校正跨日时两者会差一天
+  const birthLunar = Solar.fromYmd(birthYmd.y, birthYmd.m, birthYmd.d).getLunar();
+  const crossedToText =
+    trueSolarCrossedDay === true ? `${gy} 年 ${gm} 月 ${gd} 日` : undefined;
+
   return {
     pillars,
     dayMaster: dayGan,
     dayMasterElement: GAN_ELEMENT[dayGan] ?? "土",
-    zodiac: lunar.getYearShengXiao(),
-    solarDate: `${year} 年 ${month} 月 ${day} 日`,
-    lunarDate: `${lunar.getYearInChinese()}年${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}`,
+    zodiac: birthLunar.getYearShengXiao(),
+    solarDate: `${birthYmd.y} 年 ${birthYmd.m} 月 ${birthYmd.d} 日`,
+    lunarDate: `${birthLunar.getYearInChinese()}年${birthLunar.getMonthInChinese()}月${birthLunar.getDayInChinese()}`,
     birthTime: input.birthTime,
 
     elements,
@@ -304,6 +432,14 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
 
     startAgeText: `${yun.getStartYear()} 年 ${yun.getStartMonth()} 个月起运`,
     daYun,
+
+    calendar,
+    clockTime: formatClock(time.hour, time.minute),
+    trueSolarTime,
+    solarOffsetMinutes,
+    birthPlace: longitude !== undefined ? input.place : undefined,
+    trueSolarCrossedDay,
+    chartDateText: crossedToText,
   };
 }
 
@@ -344,9 +480,16 @@ export function chartToPrompt(chart: BaziChart): string {
   );
   const currentLiuNian = currentDaYun?.liuNian.find((n) => n.year === currentYear);
 
+  const timeLine =
+    chart.trueSolarTime !== undefined
+      ? `钟表时间 ${chart.clockTime} → 按${chart.birthPlace}换算真太阳时 ${chart.trueSolarTime}（差 ${chart.solarOffsetMinutes} 分钟）` +
+        (chart.chartDateText ? `，校正后跨日，四柱按 ${chart.chartDateText} 排定` : "")
+      : `钟表时间 ${chart.clockTime}（未填出生地，未作真太阳时校正）`;
+
   return [
-    `公历：${chart.solarDate}　${chart.birthTime}`,
+    `公历：${chart.solarDate}`,
     `农历：${chart.lunarDate}　生肖：${chart.zodiac}`,
+    `出生时间：${timeLine}`,
     "四柱：",
     pillars,
     `日主：${chart.dayMaster}（${chart.dayMasterElement}）`,

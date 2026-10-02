@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { buildBaziChart, chartToPrompt, type BaziChart } from "./bazi";
+import { buildBaziChart, chartToPrompt, validateLunarDate, type BaziChart } from "./bazi";
 
 // 不再用 "sk-placeholder" 兜底：缺 key 时应当明确报"未配置"，
 // 而不是拿一个假 key 去请求、最后以 401 的形式糊弄用户。
@@ -59,11 +59,34 @@ export interface BaziResult {
 }
 
 export async function readBazi(userInput: Record<string, string>): Promise<BaziResult> {
+  const calendar = userInput.calendar === "lunar" ? "lunar" : "solar";
+  const lunarLeap = userInput.lunarLeap === "true";
+
+  // 农历日期先单独校验一遍，好给出具体原因。
+  // 直接交给排盘的话，不存在的闰月与超出的日数都只会得到一句"信息不完整"，
+  // 用户根本不知道错在哪 —— 而这是他填的生日，最该说清楚。
+  if (calendar === "lunar") {
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec((userInput.birthDate ?? "").trim());
+    if (m) {
+      const reason = validateLunarDate(
+        Number.parseInt(m[1], 10),
+        Number.parseInt(m[2], 10),
+        Number.parseInt(m[3], 10),
+        lunarLeap
+      );
+      if (reason) return { success: false, error: reason };
+    }
+  }
+
   // 排盘是确定性计算，交给模型等于让它编；这里先算准，再让它只做解读
   const chart = buildBaziChart({
     birthDate: userInput.birthDate ?? "",
     birthTime: userInput.birthTime ?? "",
     gender: userInput.gender ?? "",
+    calendar,
+    lunarLeap,
+    // 出生地留空就不做真太阳时校正 —— 见 bazi/solar-time.ts
+    place: userInput.place || undefined,
   });
 
   if (!chart) {

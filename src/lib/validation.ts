@@ -8,7 +8,9 @@ export const MAX_LONG_FIELD = 500;
  * 用户选了「事业」和选「全面分析」拿到的解读一模一样。补上。
  */
 export const MODE_FIELDS: Record<string, readonly string[]> = {
-  bazi: ["birthDate", "birthTime", "gender", "question"],
+  // calendar / lunarLeap / place 都是「出生信息的表述方式」，不是自由文本：
+  // 它们同样要过白名单，否则用户可以塞任意值把排盘带偏。
+  bazi: ["birthDate", "birthTime", "gender", "question", "calendar", "lunarLeap", "place"],
 };
 
 const LONG_FIELDS: readonly string[] = ["question"];
