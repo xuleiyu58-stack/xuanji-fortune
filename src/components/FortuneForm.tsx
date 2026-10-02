@@ -9,6 +9,8 @@ import Glyph, { CHART_TRIGRAM } from "./Glyph";
 import BaziChart from "./BaziChart";
 import BirthInput from "./BirthInput";
 import ReadingPanel from "./ReadingPanel";
+import ShareCard from "./ShareCard";
+import FollowUp from "./FollowUp";
 // 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
 import type { BaziChart as BaziChartData } from "@/lib/bazi";
 
@@ -98,9 +100,12 @@ export default function FortuneForm({ mode, title, description }: Props) {
           {chart && <BaziChart chart={chart} />}
           {/* 解读分节呈现：每节带「结论 / 依据 / 展开」，依据必须显示出盘面出处 */}
           <ReadingPanel content={result} />
+          {/* 追问消耗的是同一个每日额度，所以放在解读之后 —— 先读完再决定要不要花 */}
+          <FollowUp birth={formData} previous={result} />
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button onClick={() => { setResult(null); setChart(null); setFormData({}); setHasPaid(false); }} className="btn-mystic">重新测算</button>
-            <button onClick={handleCopyResult} className={`btn-primary ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制结果 · 分享好友"}</button>
+            {chart && <ShareCard chart={chart} />}
+            <button onClick={handleCopyResult} className={`btn-mystic ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制文字"}</button>
           </div>
         </motion.div>
       )}

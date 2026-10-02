@@ -130,3 +130,60 @@ export async function readBazi(userInput: Record<string, string>): Promise<BaziR
     return { success: false, error: "解读生成失败，请稍后重试", chart };
   }
 }
+
+const ASK_PROMPT = `你是一位精通子平八字与五行生克的命理师。用户会提供一份**已由程序排好的命盘**，并针对它继续提问。
+
+要求：
+- 直接回答问题本身，不要复述已经讲过的整段内容
+- 用到的每一个判断都要点明盘上的依据（哪一柱、哪个十神、哪种五行关系）
+- 术语第一次出现时要解释，让不懂八字的人也能读懂
+- 不做健康、疾病、生死的断言，不推荐投资标的，不预测具体事件
+- 控制在 250 字以内，分两到三段即可。不要写小标题，不要用【】`;
+
+export interface AskResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+/**
+ * 追问。
+ *
+ * 与首次解读共用同一份排好的盘 —— 追问不重新排盘，也不允许模型自行推算。
+ * `previous` 是首轮解读的节选，给它提供上下文，但刻意截断：
+ * 全文喂回去既贵又会让模型倾向于复述。
+ */
+export async function askFollowUp(
+  chart: BaziChart,
+  question: string,
+  previous?: string
+): Promise<AskResult> {
+  const context = previous
+    ? `\n\n（此前你已经给出的解读节选，供衔接，不必重复：\n${previous.slice(0, 600)}）`
+    : "";
+
+  const userMessage =
+    `以下命盘已由程序精确排定，请直接据此回答，不要自行推算或改动：\n\n${chartToPrompt(chart)}` +
+    context +
+    `\n\n用户追问：${question}`;
+
+  try {
+    const response = await client().chat.completions.create({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: ASK_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.8,
+      max_tokens: 900,
+    });
+    return { success: true, content: response.choices[0].message.content ?? undefined };
+  } catch (error) {
+    console.error("AI ask error:", error);
+    const detail = error instanceof Error ? error.message : "";
+    if (detail.includes("DEEPSEEK_API_KEY")) {
+      return { success: false, error: "解读服务尚未配置完成，请稍后再来" };
+    }
+    return { success: false, error: "回答生成失败，请稍后重试" };
+  }
+}
