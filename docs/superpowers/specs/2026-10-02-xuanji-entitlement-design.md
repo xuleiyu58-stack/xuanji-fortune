@@ -107,8 +107,11 @@ decideAccess(mode, counts, limits, entitlement, isFree):
   3. isFree 且 device 未超且 ip 未超 → 放行，扣额度
   4. 否则
        !isFree                  → 403「该模式需激活后使用」
-       isFree                   → 403 额度用尽
+       isFree                   → 429 额度用尽
 ```
+
+状态码沿用既有约定（`route-contract.test.mts:46` 钉着的）：额度用尽是 **429**，
+服务未就绪是 **503**；只有「付费模式未激活」用 **403** —— 它不是频率问题，是权限问题。
 
 第 3 步的 `isFree` 门把免费额度**收窄到只有 daily 和 oracle**，即第 1 节第 3 条那个洞的修法。
 
@@ -120,7 +123,7 @@ decideAccess(mode, counts, limits, entitlement, isFree):
 ```ts
 type AccessDecision =
   | { allow: true; consume: "none" | "quota" | { mode: string } }  // 对象形式表示消耗一次单次券
-  | { allow: false; status: 403 | 503; reason: "global" | "paid" | "device" | "ip"; message: string };
+  | { allow: false; status: 403 | 429 | 503; reason: "global" | "paid" | "device" | "ip"; message: string };
 ```
 
 ## 6. 数据模型
@@ -229,7 +232,7 @@ interface EntitlementSummary {
 | `tests/entitlement.test.mts` | 签发、验签、过期、**篡改载荷必须失败**、换密钥必须失败、签名长度不等时不得抛异常（`timingSafeEqual` 会对不等长直接 throw）、`v` 版本不符时拒绝、**合并时同模式券的次数相加且取较晚的 `e`**、消耗到 0 时该券被移除、全空时返回 null |
 | `tests/access.test.mts` | 判定顺序；含「全局熔断对会员同样生效」「付费模式不再吃免费额度」「会员用免费模式不扣额度」「单次凭证模式不匹配不放行」；迁移原 `quota-policy` 的 5 条 |
 | `tests/no-fake-unlock.test.mts` | 回归守卫：`src/` 内不得再出现 localStorage 会员状态与 `hasPaid`（照 `no-hardcoded-prices.test.mts` 的读源文件写法） |
-| `tests/route-contract.test.mts` | 扩展：路由必须先验凭证再判额度 |
+| `tests/route-contract.test.mts` | 扩展：路由必须先验凭证再判额度。**注意**：现有第 29 行的 `indexOf("decideQuota(counts")` 会随模块改名而失效，需一并改为 `decideAccess(` |
 
 ## 10. 验收标准
 
@@ -239,7 +242,7 @@ interface EntitlementSummary {
 4. 同一个码第二次兑换 → 400
 5. 手工篡改 cookie 载荷 → 权益失效
 6. 全局熔断触发时，会员请求同样被拒（503）
-7. 免费模式额度仍是 3 次/日，第 4 次 403
+7. 免费模式额度仍是 3 次/日，第 4 次 429
 8. 会员使用免费模式不扣免费额度
 9. 单次凭证用一次后 `remaining` 归零，再用 → 403
 10. `npm test` 全绿，`npx next build` 成功
