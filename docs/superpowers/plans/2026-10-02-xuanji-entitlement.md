@@ -395,7 +395,7 @@ export function toSummary(ent: Entitlement | null, nowSec: number): EntitlementS
 - [ ] **Step 4: 运行，确认通过**
 
 Run: `npm test`
-Expected: PASS —— 新增 16 条 entitlement 测试全绿，既有测试不受影响
+Expected: PASS —— 新增 17 条 entitlement 测试全绿，既有测试不受影响
 
 - [ ] **Step 5: 提交**
 
@@ -689,7 +689,7 @@ export function decideAccess(
 - [ ] **Step 4: 运行，确认通过**
 
 Run: `npm test`
-Expected: PASS —— 14 条 access 测试全绿
+Expected: PASS —— 16 条 access 测试全绿
 
 - [ ] **Step 5: 确认接入前一切照旧**
 
