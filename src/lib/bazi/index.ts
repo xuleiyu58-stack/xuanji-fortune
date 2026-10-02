@@ -33,7 +33,7 @@ export { SHI_SHEN_MEANING } from "./relations.ts";
 export { SHEN_SHA_CAVEAT } from "./shensha.ts";
 export type { StrengthResult } from "./strength.ts";
 export type { PatternResult } from "./pattern.ts";
-export type { ShenShaHit } from "./shensha.ts";
+export type { ShenShaHit, ShenShaTone } from "./shensha.ts";
 
 const ELEMENT_ORDER: readonly WuXing[] = ["金", "木", "水", "火", "土"];
 
