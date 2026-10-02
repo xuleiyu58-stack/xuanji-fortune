@@ -1,5 +1,9 @@
 export const FREE_DAILY_QUOTA = 3;
 export const FREE_IP_DAILY_LIMIT = 6;
+/** 兑换接口按 IP 的每日尝试上限。80 bit 的码本就爆不了，这层防的是脚本噪声。 */
+export const REDEEM_IP_DAILY_LIMIT = 10;
+/** 单次通行证的有效天数。¥3.8 买的一次，不该永远躺在浏览器里。 */
+export const SINGLE_PASS_DAYS = 7;
 
 export type Mode = "daily" | "oracle" | "bazi" | "tarot" | "love";
 

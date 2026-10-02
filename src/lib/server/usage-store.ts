@@ -1,6 +1,6 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { UsageCounts } from "@/lib/access";
+import { admin, allowMemoryFallback, envValue } from "@/lib/server/runtime";
 import { createHash } from "node:crypto";
-import type { UsageCounts } from "@/lib/quota-policy";
 
 /**
  * 用量计数。
@@ -10,9 +10,7 @@ import type { UsageCounts } from "@/lib/quota-policy";
  * Vercel 的 serverless 函数是无状态的，计数必须落在函数之外 —— 放内存里
  * 每次冷启动就归零，那等于没限流。所以生产走 Supabase。
  *
- * 但没配 Supabase 时不能直接把站点打死，也不能默默放行：
- *   开发环境 → 退化为进程内内存计数，并打印醒目警告（本地单人调试够用）
- *   生产环境 → 抛错拒绝服务。宁可返回 503，也不能敞着口子烧 API 余额
+ * 环境装配（admin 客户端、内存兜底开关）在 runtime.ts 里，与激活码核销共用。
  */
 
 const GLOBAL_KEY = "global";
@@ -27,7 +25,7 @@ export function hashIp(ip: string): string {
 }
 
 export function dailyGlobalBudget(): number {
-  const raw = process.env.DEEPSEEK_DAILY_BUDGET;
+  const raw = envValue("DEEPSEEK_DAILY_BUDGET");
   const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : 300;
 }
@@ -39,38 +37,6 @@ export function dailyGlobalBudget(): number {
 export function today(): string {
   const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
   return new Date(Date.now() + BEIJING_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-function envValue(...names: string[]): string | undefined {
-  for (const n of names) {
-    const v = process.env[n];
-    if (v && v.trim().length > 0) return v.trim();
-  }
-  return undefined;
-}
-
-export function isSupabaseConfigured(): boolean {
-  return Boolean(
-    envValue("NEXT_PUBLIC_SUPABASE_URL") && envValue("SUPABASE_SERVICE_ROLE_KEY")
-  );
-}
-
-let _admin: SupabaseClient | null = null;
-
-function admin(): SupabaseClient {
-  if (!isSupabaseConfigured()) {
-    throw new Error(
-      "用量存储未配置：缺少 NEXT_PUBLIC_SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY"
-    );
-  }
-  if (!_admin) {
-    _admin = createClient(
-      envValue("NEXT_PUBLIC_SUPABASE_URL")!,
-      envValue("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { persistSession: false } }
-    );
-  }
-  return _admin;
 }
 
 /** 开发环境的内存兜底。仅进程内有效，多实例部署下不成立。 */
@@ -95,21 +61,36 @@ function memoryBucket(): Map<string, number> {
   return memory.bucket;
 }
 
-function useMemory(): boolean {
-  if (isSupabaseConfigured()) return false;
-  if (process.env.NODE_ENV === "production") {
-    // 生产环境没有共享计数 → 拒绝服务，而不是敞开
-    throw new Error(
-      "用量存储未配置且运行于生产环境：无法限流，拒绝提供服务。请配置 Supabase。"
-    );
+export async function readCount(key: string): Promise<number> {
+  if (allowMemoryFallback()) return memoryBucket().get(key) ?? 0;
+
+  const { data, error } = await admin()
+    .from("usage")
+    .select("count")
+    .eq("key", key)
+    .eq("day", today())
+    .maybeSingle();
+
+  if (error) throw new Error(`读取用量失败: ${error.message}`);
+  return (data?.count as number | undefined) ?? 0;
+}
+
+export async function bumpCount(key: string): Promise<void> {
+  if (allowMemoryFallback()) {
+    const b = memoryBucket();
+    b.set(key, (b.get(key) ?? 0) + 1);
+    return;
   }
-  return true;
+
+  // 走 rpc 做原子自增：并发下 select-then-update 会丢计数
+  const { error } = await admin().rpc("bump_usage", { k: key });
+  if (error) throw new Error(`写入用量失败: ${error.message}`);
 }
 
 export async function readUsage(deviceId: string, ipHash: string): Promise<UsageCounts> {
   const keys = [deviceKey(deviceId), ipKey(ipHash), GLOBAL_KEY];
 
-  if (useMemory()) {
+  if (allowMemoryFallback()) {
     const b = memoryBucket();
     return {
       device: b.get(keys[0]) ?? 0,
@@ -135,17 +116,15 @@ export async function readUsage(deviceId: string, ipHash: string): Promise<Usage
 }
 
 export async function bumpUsage(deviceId: string, ipHash: string): Promise<void> {
-  const keys = [deviceKey(deviceId), ipKey(ipHash), GLOBAL_KEY];
-
-  if (useMemory()) {
+  if (allowMemoryFallback()) {
     const b = memoryBucket();
-    for (const k of keys) b.set(k, (b.get(k) ?? 0) + 1);
+    for (const k of [deviceKey(deviceId), ipKey(ipHash), GLOBAL_KEY]) {
+      b.set(k, (b.get(k) ?? 0) + 1);
+    }
     return;
   }
 
-  // 走 rpc 做原子自增：并发下 select-then-update 会丢计数
-  const db = admin();
-  const results = await Promise.all(keys.map((k) => db.rpc("bump_usage", { k })));
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw new Error(`写入用量失败: ${failed.error.message}`);
+  await Promise.all(
+    [deviceKey(deviceId), ipKey(ipHash), GLOBAL_KEY].map((k) => bumpCount(k))
+  );
 }
