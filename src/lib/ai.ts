@@ -86,7 +86,8 @@ export async function readBazi(userInput: Record<string, string>): Promise<BaziR
     calendar,
     lunarLeap,
     // 出生地留空就不做真太阳时校正 —— 见 bazi/solar-time.ts
-    place: userInput.place || undefined,
+    province: userInput.province || undefined,
+    city: userInput.city || undefined,
   });
 
   if (!chart) {

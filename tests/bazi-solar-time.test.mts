@@ -4,7 +4,9 @@ import {
   dayOfYear, equationOfTimeMinutes, trueSolarOffsetMinutes,
   toTrueSolarTime, formatClock, describeOffset,
 } from "../src/lib/bazi/solar-time.ts";
-import { PLACES, PLACE_NAMES, longitudeOf } from "../src/lib/bazi/places.ts";
+import {
+  REGIONS, PROVINCE_NAMES, citiesOf, countiesOf, longitudeOfCity, isApproximate, longitudeOf,
+} from "../src/lib/bazi/places.ts";
 
 test("一年中的第几天", () => {
   assert.equal(dayOfYear(2026, 1, 1), 1);
@@ -105,17 +107,82 @@ test("偏移说明是人话，且带上城市名", () => {
   assert.match(describeOffset(0, "杭州"), /几乎一致/);
 });
 
-test("经度表：城市不重名，经度落在中国的合理范围内", () => {
-  assert.equal(new Set(PLACE_NAMES).size, PLACES.length, "有重名城市");
-  for (const p of PLACES) {
-    assert.ok(p.longitude > 70 && p.longitude < 136, `${p.name} 的经度 ${p.longitude} 不在中国范围内`);
+// ── 省市县数据 ───────────────────────────────────────────
+
+test("省市县覆盖到位：34 省、300+ 市、3000+ 区县", () => {
+  assert.equal(PROVINCE_NAMES.length, 34, `省份数应为 34，实际 ${PROVINCE_NAMES.length}`);
+  assert.equal(new Set(PROVINCE_NAMES).size, 34, "省份有重名");
+
+  const cities = REGIONS.flatMap((p) => p.c);
+  const counties = cities.flatMap((c) => c.d);
+  assert.ok(cities.length >= 330, `市数偏少：${cities.length}`);
+  assert.ok(counties.length >= 3000, `区县数偏少：${counties.length}`);
+});
+
+test("每个省都有市，每个市都有可选项", () => {
+  for (const p of REGIONS) {
+    assert.ok(p.c.length > 0, `${p.n} 没有下辖市`);
+    for (const c of p.c) {
+      assert.ok(c.d.length > 0, `${p.n} ${c.n} 没有任何区县，用户会选不下去`);
+    }
   }
 });
 
-test("按名取经度；取不到时返回 undefined 而不是兜底值", () => {
-  assert.equal(longitudeOf("北京"), 116.41);
-  assert.equal(longitudeOf("  北京  "), 116.41, "应容忍前后空格");
+test("每个市的经度都落在中国的合理范围内（73–135°E）", () => {
+  for (const p of REGIONS) {
+    for (const c of p.c) {
+      assert.ok(
+        c.g > 73 && c.g < 136,
+        `${p.n} ${c.n} 的经度 ${c.g} 不在中国范围内`
+      );
+    }
+  }
+});
+
+test("向东经度递增的常识成立：上海 > 北京 > 乌鲁木齐", () => {
+  const sh = longitudeOfCity("上海市", "上海市")!;
+  const bj = longitudeOfCity("北京市", "北京市")!;
+  const wlmq = longitudeOfCity("新疆维吾尔自治区", "乌鲁木齐市")!;
+  assert.ok(sh > bj && bj > wlmq, `实际 上海${sh} 北京${bj} 乌鲁木齐${wlmq}`);
+});
+
+test("自治州取驻地市的经度：延边州 ≈ 延吉，拉萨 ≈ 91°E", () => {
+  const yanbian = longitudeOfCity("吉林省", "延边朝鲜族自治州")!;
+  assert.ok(yanbian > 128 && yanbian < 131, `延边应取延吉的经度(≈129.5)，实际 ${yanbian}`);
+
+  const lhasa = longitudeOfCity("西藏自治区", "拉萨市")!;
+  assert.ok(lhasa > 90 && lhasa < 92, `拉萨应≈91°E，实际 ${lhasa}`);
+});
+
+test("查不到时返回 undefined，而不是拿个默认值硬算", () => {
+  assert.equal(longitudeOfCity("不存在省", "不存在市"), undefined);
+  assert.equal(longitudeOfCity("北京市", undefined), undefined);
+  assert.equal(longitudeOfCity(undefined, "北京市"), undefined);
   assert.equal(longitudeOf("不存在的城市"), undefined);
   assert.equal(longitudeOf(undefined), undefined);
-  assert.equal(longitudeOf(""), undefined);
+});
+
+test("按省+市查得准；只有市名时也能查（跨省重名取第一个）", () => {
+  assert.equal(longitudeOfCity("北京市", "北京市"), 116.4);
+  assert.equal(longitudeOf("北京市"), 116.4);
+  assert.equal(longitudeOf("  北京市  "), 116.4, "应容忍前后空格");
+});
+
+test("省市县三级联动取得到数据", () => {
+  const cities = citiesOf("新疆维吾尔自治区");
+  assert.ok(cities.length >= 10, `新疆应有 10 个以上地州，实际 ${cities.length}`);
+  const counties = countiesOf("新疆维吾尔自治区", "乌鲁木齐市");
+  assert.ok(counties.length >= 5, `乌鲁木齐应有多个区县，实际 ${counties.length}`);
+  assert.equal(citiesOf("不存在省").length, 0);
+  assert.equal(countiesOf("北京市", "不存在市").length, 0);
+});
+
+test("经度是估值的地方被如实标出来，不冒充实测值", () => {
+  // 这几个市两份坐标数据源都查不到，退用了省内中位数
+  assert.equal(isApproximate("三沙市"), true);
+  assert.equal(isApproximate("海北藏族自治州"), true);
+  // 大多数是实测值
+  assert.equal(isApproximate("乌鲁木齐市"), false);
+  assert.equal(isApproximate("北京市"), false);
+  assert.equal(isApproximate(undefined), false);
 });

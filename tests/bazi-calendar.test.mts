@@ -60,14 +60,24 @@ test("不填出生地就不校正，时柱按钟表时间算", () => {
   assert.equal(c.clockTime, "10:00");
 });
 
-test("出生地不在经度表里时同样不校正，而不是拿默认经度硬算", () => {
-  const c = buildBaziChart(base({ place: "某个不存在的地方" }))!;
+test("出生地不在数据里时同样不校正，而不是拿默认经度硬算", () => {
+  const c = buildBaziChart(base({ province: "不存在省", city: "不存在市" }))!;
   assert.equal(c.trueSolarTime, undefined);
+});
+
+test("区县只影响可选项，不影响经度 —— 同一市内各区县得到同一个真太阳时", () => {
+  const a = buildBaziChart(base({
+    province: "新疆维吾尔自治区", city: "乌鲁木齐市", birthTime: "10:00",
+  }))!;
+  const b = buildBaziChart(base({
+    province: "新疆维吾尔自治区", city: "乌鲁木齐市", birthTime: "10:00",
+  }))!;
+  assert.equal(a.trueSolarTime, b.trueSolarTime);
 });
 
 test("**真太阳时能改掉时柱**：乌鲁木齐 10:00 实际是辰时，不是巳时", () => {
   const plain = buildBaziChart(base({}))!;
-  const withPlace = buildBaziChart(base({ place: "乌鲁木齐" }))!;
+  const withPlace = buildBaziChart(base({ province: "新疆维吾尔自治区", city: "乌鲁木齐市" }))!;
 
   assert.equal(plain.pillars[3].zhi, "巳", "钟表 10:00 是巳时");
   assert.equal(withPlace.pillars[3].zhi, "辰", "乌鲁木齐真太阳时 07:5x，应落入辰时");
@@ -75,21 +85,23 @@ test("**真太阳时能改掉时柱**：乌鲁木齐 10:00 实际是辰时，不
 });
 
 test("同一个钟表时间，北京与乌鲁木齐排出的盘不同 —— 这正是校正的意义", () => {
-  const bj = pillarsOf(base({ place: "北京" }));
-  const wlmq = pillarsOf(base({ place: "乌鲁木齐" }));
+  const bj = pillarsOf(base({ province: "北京市", city: "北京市" }));
+  const wlmq = pillarsOf(base({ province: "新疆维吾尔自治区", city: "乌鲁木齐市" }));
   assert.notEqual(bj, wlmq);
 });
 
 test("校正量级符合经度差：乌鲁木齐约 −130 分钟，北京只有几分钟", () => {
-  const wlmq = buildBaziChart(base({ place: "乌鲁木齐" }))!;
-  const bj = buildBaziChart(base({ place: "北京" }))!;
+  const wlmq = buildBaziChart(base({ province: "新疆维吾尔自治区", city: "乌鲁木齐市" }))!;
+  const bj = buildBaziChart(base({ province: "北京市", city: "北京市" }))!;
   assert.ok(Math.abs(wlmq.solarOffsetMinutes!) > 125, `乌鲁木齐应差两小时上下`);
   assert.ok(Math.abs(bj.solarOffsetMinutes!) < 20, `北京应只差十几分钟`);
 });
 
 test("**跨日时如实改日柱**：乌鲁木齐 00:30 出生，真太阳时退到前一天", () => {
   const plain = buildBaziChart(base({ birthTime: "00:30" }))!;
-  const wlmq = buildBaziChart(base({ birthTime: "00:30", place: "乌鲁木齐" }))!;
+  const wlmq = buildBaziChart(
+    base({ birthTime: "00:30", province: "新疆维吾尔自治区", city: "乌鲁木齐市" })
+  )!;
 
   assert.equal(wlmq.trueSolarCrossedDay, true);
   assert.ok(wlmq.chartDateText, "跨日时应给出排盘实际所用日期");
@@ -101,18 +113,22 @@ test("**跨日时如实改日柱**：乌鲁木齐 00:30 出生，真太阳时退
 });
 
 test("不跨日时不给 chartDateText，免得界面上多出一行无效信息", () => {
-  const c = buildBaziChart(base({ birthTime: "14:00", place: "北京" }))!;
+  const c = buildBaziChart(
+    base({ birthTime: "14:00", province: "北京市", city: "北京市" })
+  )!;
   assert.equal(c.trueSolarCrossedDay, false);
   assert.equal(c.chartDateText, undefined);
 });
 
 test("上报的生日不被校正改写 —— 用户填的日期就是他的生日", () => {
-  const c = buildBaziChart(base({ birthTime: "00:30", place: "乌鲁木齐" }))!;
+  const c = buildBaziChart(
+    base({ birthTime: "00:30", province: "新疆维吾尔自治区", city: "乌鲁木齐市" })
+  )!;
   assert.equal(c.solarDate, "1990 年 6 月 15 日", "展示的生日应保持用户填的那天");
 });
 
 test("prompt 里写明了时间校正，模型才知道时柱是怎么来的", () => {
-  const withPlace = chartToPrompt(buildBaziChart(base({ place: "乌鲁木齐" }))!);
+  const withPlace = chartToPrompt(buildBaziChart(base({ province: "新疆维吾尔自治区", city: "乌鲁木齐市" }))!);
   assert.match(withPlace, /真太阳时/);
   assert.match(withPlace, /乌鲁木齐/);
   assert.match(withPlace, /差 -?\d+ 分钟/);

@@ -1,75 +1,65 @@
 /**
- * 出生地经度表。
+ * 出生地查询。
  *
- * 只收省会与主要城市 —— 一个下拉框里塞几百个县，用户翻起来比不填还累。
- * 经度精确到小数点后两位，够算真太阳时了：1° 差 4 分钟，
- * 而同城内不同位置的经度差远小于 0.1°（约 24 秒），不影响判柱。
+ * 数据在 regions.ts（34 省 / 344 市 / 3291 区县），本文件只负责查。
  *
- * 经度一律取东经正数。中国全境都在东经，无需处理西经。
+ * 为什么县不单独存经度：同一地级市内各点的经度差通常不足 1°，合 4 分钟；
+ * 而时辰的边界是两小时。县级精度对判柱没有意义，列出来只是为了让人认得出自己的家。
+ *
+ * 查不到就返回 undefined，让调用方**跳过**真太阳时校正 —— 绝不拿一个默认经度硬算，
+ * 那会把"没算"伪装成"算过了"，比不校正更糟。
  */
 
-export interface Place {
-  name: string;
-  longitude: number;
+import { APPROXIMATED, REGIONS, type RegionCity, type RegionProvince } from "./regions.ts";
+
+export { REGIONS, APPROXIMATED };
+export type { RegionCity, RegionProvince };
+
+export const PROVINCE_NAMES: readonly string[] = REGIONS.map((p) => p.n);
+
+function findProvince(name: string | undefined): RegionProvince | undefined {
+  if (!name) return undefined;
+  return REGIONS.find((p) => p.n === name);
 }
 
-/** 按拼音/常用顺序排列，方便在下拉框里找。 */
-export const PLACES: readonly Place[] = [
-  { name: "北京", longitude: 116.41 },
-  { name: "上海", longitude: 121.47 },
-  { name: "天津", longitude: 117.20 },
-  { name: "重庆", longitude: 106.55 },
-  { name: "哈尔滨", longitude: 126.53 },
-  { name: "长春", longitude: 125.32 },
-  { name: "沈阳", longitude: 123.43 },
-  { name: "大连", longitude: 121.62 },
-  { name: "呼和浩特", longitude: 111.75 },
-  { name: "石家庄", longitude: 114.51 },
-  { name: "太原", longitude: 112.55 },
-  { name: "济南", longitude: 117.00 },
-  { name: "青岛", longitude: 120.38 },
-  { name: "郑州", longitude: 113.62 },
-  { name: "西安", longitude: 108.95 },
-  { name: "兰州", longitude: 103.83 },
-  { name: "西宁", longitude: 101.78 },
-  { name: "银川", longitude: 106.23 },
-  { name: "乌鲁木齐", longitude: 87.62 },
-  { name: "拉萨", longitude: 91.14 },
-  { name: "南京", longitude: 118.78 },
-  { name: "苏州", longitude: 120.58 },
-  { name: "无锡", longitude: 120.30 },
-  { name: "徐州", longitude: 117.18 },
-  { name: "杭州", longitude: 120.15 },
-  { name: "宁波", longitude: 121.55 },
-  { name: "温州", longitude: 120.70 },
-  { name: "合肥", longitude: 117.27 },
-  { name: "福州", longitude: 119.30 },
-  { name: "厦门", longitude: 118.09 },
-  { name: "南昌", longitude: 115.89 },
-  { name: "长沙", longitude: 112.94 },
-  { name: "武汉", longitude: 114.30 },
-  { name: "广州", longitude: 113.26 },
-  { name: "深圳", longitude: 114.06 },
-  { name: "东莞", longitude: 113.75 },
-  { name: "佛山", longitude: 113.12 },
-  { name: "南宁", longitude: 108.37 },
-  { name: "海口", longitude: 110.20 },
-  { name: "成都", longitude: 104.07 },
-  { name: "绵阳", longitude: 104.68 },
-  { name: "贵阳", longitude: 106.63 },
-  { name: "昆明", longitude: 102.83 },
-  { name: "香港", longitude: 114.17 },
-  { name: "澳门", longitude: 113.55 },
-  { name: "台北", longitude: 121.52 },
-];
+/** 某省下辖的市。省名不存在时返回空数组。 */
+export function citiesOf(province: string | undefined): readonly RegionCity[] {
+  return findProvince(province)?.c ?? [];
+}
 
-const BY_NAME = new Map(PLACES.map((p) => [p.name, p.longitude]));
+/** 某市下辖的区县。 */
+export function countiesOf(province: string | undefined, city: string | undefined): readonly string[] {
+  if (!city) return [];
+  return citiesOf(province).find((c) => c.n === city)?.d ?? [];
+}
 
-/** 按城市名取经度。找不到返回 undefined —— 调用方据此跳过校正，而不是拿个默认值硬算。 */
+/** 某市的经度（东经正数）。查不到返回 undefined。 */
+export function longitudeOfCity(
+  province: string | undefined,
+  city: string | undefined
+): number | undefined {
+  if (!city) return undefined;
+  return citiesOf(province).find((c) => c.n === city)?.g;
+}
+
+/** 该市的经度是否为"省内中位数"估值而非实测 —— 界面上要如实标出来。 */
+export function isApproximate(city: string | undefined): boolean {
+  if (!city) return false;
+  return APPROXIMATED.includes(city);
+}
+
+/**
+ * 按市名直接查经度，不指定省份。
+ *
+ * 给老的调用方式留的兼容口子（`BaziInput.place`），跨省重名时取第一个命中。
+ * 新代码请用 `longitudeOfCity` —— 带上省名才不会在重名时取错。
+ */
 export function longitudeOf(name: string | undefined): number | undefined {
   if (!name) return undefined;
-  return BY_NAME.get(name.trim());
+  const trimmed = name.trim();
+  for (const p of REGIONS) {
+    const hit = p.c.find((c) => c.n === trimmed);
+    if (hit) return hit.g;
+  }
+  return undefined;
 }
-
-/** 供表单的下拉框使用。 */
-export const PLACE_NAMES: readonly string[] = PLACES.map((p) => p.name);

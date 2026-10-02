@@ -98,6 +98,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               <span className="text-gold-300 tabular-nums">真太阳时 {chart.trueSolarTime}</span>
               <span className="text-paper-100/45">
                 按{chart.birthPlace}的经度换算，差 {chart.solarOffsetMinutes} 分钟
+                {chart.birthPlaceApproximate && "（该地经度为省内估值）"}
               </span>
             </>
           ) : (

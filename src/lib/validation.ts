@@ -10,7 +10,10 @@ export const MAX_LONG_FIELD = 500;
 export const MODE_FIELDS: Record<string, readonly string[]> = {
   // calendar / lunarLeap / place 都是「出生信息的表述方式」，不是自由文本：
   // 它们同样要过白名单，否则用户可以塞任意值把排盘带偏。
-  bazi: ["birthDate", "birthTime", "gender", "question", "calendar", "lunarLeap", "place"],
+  bazi: [
+    "birthDate", "birthTime", "gender", "question",
+    "calendar", "lunarLeap", "province", "city",
+  ],
 };
 
 const LONG_FIELDS: readonly string[] = ["question"];

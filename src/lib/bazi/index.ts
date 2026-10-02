@@ -28,7 +28,7 @@ import { analyzeStrength, type StrengthResult } from "./strength.ts";
 import { analyzePattern, type PatternResult } from "./pattern.ts";
 import { findShenSha, type ShenShaHit } from "./shensha.ts";
 import { formatClock, toTrueSolarTime } from "./solar-time.ts";
-import { longitudeOf } from "./places.ts";
+import { isApproximate, longitudeOf, longitudeOfCity } from "./places.ts";
 
 export type { WuXing, ShiShen, ChangSheng, Zhi } from "./constants.ts";
 export { SHI_SHEN_MEANING } from "./relations.ts";
@@ -36,7 +36,9 @@ export { SHEN_SHA_CAVEAT } from "./shensha.ts";
 export type { StrengthResult } from "./strength.ts";
 export type { PatternResult } from "./pattern.ts";
 export type { ShenShaHit, ShenShaTone } from "./shensha.ts";
-export { PLACE_NAMES, longitudeOf } from "./places.ts";
+export {
+  PROVINCE_NAMES, citiesOf, countiesOf, longitudeOfCity, isApproximate, longitudeOf,
+} from "./places.ts";
 export { describeOffset } from "./solar-time.ts";
 
 const ELEMENT_ORDER: readonly WuXing[] = ["金", "木", "水", "火", "土"];
@@ -158,8 +160,10 @@ export interface BaziChart {
   trueSolarTime?: string;
   /** 真太阳时相对钟表时间的偏移（分钟） */
   solarOffsetMinutes?: number;
-  /** 出生地 */
+  /** 出生地，形如「新疆维吾尔自治区 巴音郭楞蒙古自治州」 */
   birthPlace?: string;
+  /** 该市经度是省内中位数估值而非实测（界面上要如实标出） */
+  birthPlaceApproximate?: boolean;
   /** 校正后的时间是否落到了另一天 —— 会影响日柱，必须在界面上讲明白 */
   trueSolarCrossedDay?: boolean;
   /** 跨日时，排盘实际所用的日期（与上报的生日不同，界面需并列显示） */
@@ -181,8 +185,9 @@ export interface BaziInput {
   calendar?: Calendar;
   /** 该农历月是否为闰月 */
   lunarLeap?: boolean;
-  /** 出生地城市名（见 places.ts）。填了才做真太阳时校正。 */
-  place?: string;
+  /** 出生地：省与市（见 regions.ts）。填了才做真太阳时校正。 */
+  province?: string;
+  city?: string;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -305,7 +310,8 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
   let solarOffsetMinutes: number | undefined;
   let trueSolarCrossedDay: boolean | undefined;
 
-  const longitude = longitudeOf(input.place);
+  // 优先按「省 + 市」查（跨省重名时才不会取错）；只有市名时退回按市名查
+  const longitude = longitudeOfCity(input.province, input.city) ?? longitudeOf(input.city);
   if (longitude !== undefined) {
     const r = toTrueSolarTime(time.hour, time.minute, longitude, gy, gm, gd);
     hour = r.hour;
@@ -437,7 +443,11 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     clockTime: formatClock(time.hour, time.minute),
     trueSolarTime,
     solarOffsetMinutes,
-    birthPlace: longitude !== undefined ? input.place : undefined,
+    birthPlace:
+      longitude !== undefined
+        ? [input.province, input.city].filter(Boolean).join(" ")
+        : undefined,
+    birthPlaceApproximate: longitude !== undefined ? isApproximate(input.city) : undefined,
     trueSolarCrossedDay,
     chartDateText: crossedToText,
   };

@@ -50,10 +50,19 @@ test("全 src 里不留指向已删除路由的链接", () => {
   }
 });
 
-test("出生地只用于真太阳时，且界面把这件事讲清楚了", () => {
+test("出生地是省 → 市 → 区县三级联动，且只用于真太阳时", () => {
   const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
   assert.match(birth, /真太阳时/, "选了出生地却不说明用途，用户不知道为什么要填");
-  assert.match(birth, /PLACE_NAMES/, "出生地应来自经度表，而不是自由文本");
+  assert.match(birth, /PROVINCE_NAMES/, "省应来自数据表，而不是自由文本");
+  assert.match(birth, /citiesOf/, "市应由所选省份推导");
+  assert.match(birth, /countiesOf/, "区县应由所选城市推导");
+});
+
+test("出生时刻填到分钟，而不是挑一个时辰", () => {
+  const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
+  assert.match(birth, /type="time"/, "应当是精确时间输入，而不是十二时辰下拉");
+  assert.doesNotMatch(birth, /TIME_OPTIONS/, "十二时辰下拉已废");
+  assert.match(birth, /晚子时/, "23 点后的子时口径与常规不同，界面必须说明");
 });
 
 test("命盘上须写明时间是怎么定的", () => {
