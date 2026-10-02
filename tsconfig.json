@@ -1,6 +1,12 @@
 {
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
+
+    // 显式指定 target。不写会默认落到 ES5，于是 `[...set]`、`for...of` 迭代 Set
+    // 这类写法全被 TS2802 挡下（已经咬过两次）。Next 用 SWC 出产物，
+    // tsc 在这里只做类型检查，所以 target 只影响检查口径，不影响最终代码。
+    "target": "ES2020",
+
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,

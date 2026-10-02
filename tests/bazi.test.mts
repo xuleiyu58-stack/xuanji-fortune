@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildBaziChart, parseHourMinute, chartToPrompt } from "../src/lib/bazi.ts";
+import { buildBaziChart, parseHourMinute, chartToPrompt } from "../src/lib/bazi/index.ts";
 
 /**
  * 正确性锚点来自**外部独立来源**，不是本库自证：
