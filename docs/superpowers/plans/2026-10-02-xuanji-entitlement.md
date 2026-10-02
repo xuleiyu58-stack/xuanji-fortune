@@ -1809,9 +1809,9 @@ export default function PaymentModal({ open, onClose, title, price, onRedeemed }
                 </div>
 
                 <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
-                  <p className="text-gray-700 text-xs mb-2 font-medium">微信扫码支付</p>
+                  <p className="text-gray-700 text-xs mb-2 font-medium">支付宝扫码支付</p>
                   {qrFailed ? (
-                    <div className="w-44 h-44 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
+                    <div className="w-52 h-64 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
                       <span className="text-gray-400 text-xs leading-relaxed">
                         收款码暂未就绪
                         <br />
@@ -1820,14 +1820,16 @@ export default function PaymentModal({ open, onClose, title, price, onRedeemed }
                     </div>
                   ) : (
                     <>
+                      {/* 收款码是整张竖版海报（1260×1890），强塞进正方形会让二维码缩到约 100px、
+                          扫不动。所以只固定宽度、按原始比例显示（渲染约 208×312，二维码约 180px）。 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src="/qrcode.jpg"
-                        alt="微信收款码"
-                        className="w-44 h-44 object-contain rounded"
+                        alt="支付宝收款码"
+                        className="w-52 h-auto rounded"
                         onError={() => setQrFailed(true)}
                       />
-                      <p className="text-gray-400 text-[10px] mt-1">长按识别或截图扫描</p>
+                      <p className="text-gray-400 text-[10px] mt-2">长按识别或截图扫描</p>
                     </>
                   )}
                 </div>
@@ -2253,7 +2255,8 @@ node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode tarot --co
 - 订单表与自动支付（需商户资质；当前用激活码替代）
 - 管理后台（发码目前靠 `scripts/gen-codes.mjs`）
 - 法律页：用户协议、隐私政策、免责声明（`Footer.tsx` 里两处 `href="#"` 是死链）
-- `public/qrcode.jpg` 收款码，以及 `src/lib/contact.ts` 里的联系方式 —— **两者不填，付费链路就是断的**
+- **`src/lib/contact.ts` 里的联系方式 —— 不填则付费链路是断的**：给了码也没人知道找谁要
+- 收款码 `public/qrcode.jpg` 是支付宝的，若将来换微信需同步改 `PaymentModal` 的文案与 `alt`
 ```
 
 - [ ] **Step 3: 提交**
