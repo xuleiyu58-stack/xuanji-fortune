@@ -32,3 +32,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 构建产物压缩包与平台快捷方式（都不该进仓库）
+*.tar.gz
+*.lnk
