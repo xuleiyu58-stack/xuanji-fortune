@@ -1,36 +1,36 @@
 /**
- * 出生地查询。
+ * 出生地查询 —— **服务端专用**。
  *
- * 数据在 regions.ts（34 省 / 344 市 / 3291 区县），本文件只负责查。
+ * 数据在 regions.ts（34 省 / 344 市 / 3291 区县），本文件把它包成几个顺手的查询函数。
  *
- * 为什么县不单独存经度：同一地级市内各点的经度差通常不足 1°，合 4 分钟；
- * 而时辰的边界是两小时。县级精度对判柱没有意义，列出来只是为了让人认得出自己的家。
+ * ⚠️ 本模块**静态**引用了那份 60KB 的数据，只该在服务端用（排盘要把城市换算成经度）。
+ * 浏览器端不要 import 它 —— 那会把整份区划表拽进首屏包。前端请自己
+ * `await import("@/lib/bazi/regions")` 按需取，再用 regions.ts 里那几个
+ * 「把数据当参数传」的纯函数（citiesIn / countiesIn / cityLongitude）查询。
  *
  * 查不到就返回 undefined，让调用方**跳过**真太阳时校正 —— 绝不拿一个默认经度硬算，
  * 那会把"没算"伪装成"算过了"，比不校正更糟。
  */
 
-import { APPROXIMATED, REGIONS, type RegionCity, type RegionProvince } from "./regions.ts";
+import { APPROXIMATED, isApproximate } from "./approximated.ts";
+import {
+  REGIONS, citiesIn, cityLongitude, countiesIn,
+  type RegionCity, type RegionProvince,
+} from "./regions.ts";
 
-export { REGIONS, APPROXIMATED };
+export { REGIONS, APPROXIMATED, isApproximate, citiesIn, countiesIn, cityLongitude };
 export type { RegionCity, RegionProvince };
 
 export const PROVINCE_NAMES: readonly string[] = REGIONS.map((p) => p.n);
 
-function findProvince(name: string | undefined): RegionProvince | undefined {
-  if (!name) return undefined;
-  return REGIONS.find((p) => p.n === name);
-}
-
-/** 某省下辖的市。省名不存在时返回空数组。 */
+/** 某省下辖的市。 */
 export function citiesOf(province: string | undefined): readonly RegionCity[] {
-  return findProvince(province)?.c ?? [];
+  return citiesIn(REGIONS, province);
 }
 
 /** 某市下辖的区县。 */
 export function countiesOf(province: string | undefined, city: string | undefined): readonly string[] {
-  if (!city) return [];
-  return citiesOf(province).find((c) => c.n === city)?.d ?? [];
+  return countiesIn(REGIONS, province, city);
 }
 
 /** 某市的经度（东经正数）。查不到返回 undefined。 */
@@ -38,14 +38,7 @@ export function longitudeOfCity(
   province: string | undefined,
   city: string | undefined
 ): number | undefined {
-  if (!city) return undefined;
-  return citiesOf(province).find((c) => c.n === city)?.g;
-}
-
-/** 该市的经度是否为"省内中位数"估值而非实测 —— 界面上要如实标出来。 */
-export function isApproximate(city: string | undefined): boolean {
-  if (!city) return false;
-  return APPROXIMATED.includes(city);
+  return cityLongitude(REGIONS, province, city);
 }
 
 /**

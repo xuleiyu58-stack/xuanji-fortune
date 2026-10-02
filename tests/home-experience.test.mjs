@@ -53,9 +53,33 @@ test("全 src 里不留指向已删除路由的链接", () => {
 test("出生地是省 → 市 → 区县三级联动，且只用于真太阳时", () => {
   const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
   assert.match(birth, /真太阳时/, "选了出生地却不说明用途，用户不知道为什么要填");
-  assert.match(birth, /PROVINCE_NAMES/, "省应来自数据表，而不是自由文本");
-  assert.match(birth, /citiesOf/, "市应由所选省份推导");
-  assert.match(birth, /countiesOf/, "区县应由所选城市推导");
+  assert.match(birth, /citiesIn/, "市应由所选省份推导");
+  assert.match(birth, /countiesIn/, "区县应由所选城市推导");
+});
+
+test("区划数据按需加载 —— 60KB 的表不该跟着首屏一起发出去", () => {
+  const birth = readFileSync(new URL("../src/components/BirthInput.tsx", import.meta.url), "utf8");
+
+  assert.match(birth, /import\("@\/lib\/bazi\/regions"\)/, "应当动态导入");
+  // 静态导入会把整份数据拖回首屏包，动态导入的意义就没了
+  assert.doesNotMatch(
+    birth,
+    /^import\s+(?!type\b)[^;]*from\s+"@\/lib\/bazi\/regions";/m,
+    "不得静态导入区划数据"
+  );
+  // 类型导入是允许的 —— 它会被完全擦除
+  assert.match(birth, /import type \{[^}]*\} from "@\/lib\/bazi\/regions";/);
+});
+
+test("命盘组件不得从 @/lib/bazi 入口取值 —— 那会把 places 连同区划数据一起拽进来", () => {
+  const chart = readFileSync(new URL("../src/components/BaziChart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(
+    chart,
+    /^import\s+(?!type\b)[^;]*from\s+"@\/lib\/bazi";/m,
+    "常量应改从叶子模块（shensha / constants / strength）导入"
+  );
+  assert.match(chart, /from "@\/lib\/bazi\/shensha"/);
+  assert.match(chart, /from "@\/lib\/bazi\/constants"/);
 });
 
 test("出生时刻填到分钟，而不是挑一个时辰", () => {

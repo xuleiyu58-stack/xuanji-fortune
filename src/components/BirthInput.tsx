@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GENDER_OPTIONS } from "@/lib/choices";
-import { PROVINCE_NAMES, citiesOf, countiesOf, isApproximate } from "@/lib/bazi";
+import { isApproximate } from "@/lib/bazi/approximated";
+// 只取类型 —— 类型导入会被完全擦除，不会把数据带进包里
+import type { RegionProvince } from "@/lib/bazi/regions";
+
+/** 按需加载的区划模块。60KB 的数据不该跟着首屏一起发出去。 */
+type RegionsModule = typeof import("@/lib/bazi/regions");
 
 /**
  * 出生信息表单。
@@ -64,8 +69,26 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendar, ly, lm, ld]);
 
-  const cities = useMemo(() => citiesOf(province), [province]);
-  const counties = useMemo(() => countiesOf(province, city), [province, city]);
+  // 区划数据按需加载：它是 60KB 的静态表，跟着首屏发出去了却不一定会被用到。
+  // 拉不到也不崩 —— 省份框会停在「加载中」，其余表单一概照常用。
+  const [regionsMod, setRegionsMod] = useState<RegionsModule | null>(null);
+  useEffect(() => {
+    let alive = true;
+    import("@/lib/bazi/regions")
+      .then((m) => { if (alive) setRegionsMod(m); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const provinces: readonly string[] = regionsMod?.REGIONS.map((p) => p.n) ?? [];
+  const cities = useMemo(
+    () => (regionsMod ? regionsMod.citiesIn(regionsMod.REGIONS, province) : []),
+    [regionsMod, province]
+  );
+  const counties = useMemo(
+    () => (regionsMod ? regionsMod.countiesIn(regionsMod.REGIONS, province, city) : []),
+    [regionsMod, province, city]
+  );
 
   // 省一变，下辖的市与区县就都不成立了，清掉免得留下一个对不上的组合
   const handleProvince = (next: string) => {
@@ -198,9 +221,15 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
       <div>
         <label className={LABEL_CLS}>出生地（可选）</label>
         <div className="grid grid-cols-3 gap-2">
-          <select value={province} onChange={(e) => handleProvince(e.target.value)} className={SELECT_CLS} aria-label="省">
-            <option value="">省份</option>
-            {PROVINCE_NAMES.map((n) => (
+          <select
+            value={province}
+            onChange={(e) => handleProvince(e.target.value)}
+            disabled={!regionsMod}
+            className={`${SELECT_CLS} disabled:opacity-40`}
+            aria-label="省"
+          >
+            <option value="">{regionsMod ? "省份" : "加载中…"}</option>
+            {provinces.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>

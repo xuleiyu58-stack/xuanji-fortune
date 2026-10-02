@@ -1,8 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { BaziChart as Chart, WuXing, ShenShaTone } from "@/lib/bazi";
-import { SHEN_SHA_CAVEAT, PALACE_MEANING, YONG_SHEN_METHOD } from "@/lib/bazi";
+// 类型是纯类型导入，会被完全擦除；常量则**刻意**从叶子模块取，不走 @/lib/bazi 入口 ——
+// 入口会牵出 places.ts，而 places.ts 静态引用了 60KB 的区划数据，
+// 一旦走入口，那份数据就随首屏包一起发出去了。
+import type { BaziChart as Chart } from "@/lib/bazi";
+import type { WuXing } from "@/lib/bazi/constants";
+import type { ShenShaTone } from "@/lib/bazi/shensha";
+import { SHEN_SHA_CAVEAT } from "@/lib/bazi/shensha";
+import { PALACE_MEANING } from "@/lib/bazi/constants";
+import { YONG_SHEN_METHOD } from "@/lib/bazi/strength";
 
 /**
  * 命盘。

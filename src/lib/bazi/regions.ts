@@ -440,10 +440,34 @@ export const REGIONS: readonly RegionProvince[] = [
   ] },
 ];
 
-// 退用省内中位数经度的市（两地数据源都查不到）。误差在 1° 以内，合 4 分钟上下，
-// 远小于一个时辰，对判柱无影响 —— 但如实记在这里，免得将来有人以为它们是实测值。
-export const APPROXIMATED = [
-  "三沙市",
-  "海北藏族自治州",
-  "省直辖县级市",
-];
+// ── 查询helper ────────────────────────────────────────────
+//
+// 刻意写成「把数据当参数传进来」的纯函数，而不是直接闭包引用 REGIONS ——
+// 因为浏览器端是**按需加载**这份数据的（它有 60KB，不该进首屏包），
+// 拿到的是个可能为 null 的局部变量，不是模块级的常量。
+
+export function citiesIn(
+  regions: readonly RegionProvince[],
+  province: string | undefined
+): readonly RegionCity[] {
+  if (!province) return [];
+  return regions.find((p) => p.n === province)?.c ?? [];
+}
+
+export function countiesIn(
+  regions: readonly RegionProvince[],
+  province: string | undefined,
+  city: string | undefined
+): readonly string[] {
+  if (!city) return [];
+  return citiesIn(regions, province).find((c) => c.n === city)?.d ?? [];
+}
+
+export function cityLongitude(
+  regions: readonly RegionProvince[],
+  province: string | undefined,
+  city: string | undefined
+): number | undefined {
+  if (!city) return undefined;
+  return citiesIn(regions, province).find((c) => c.n === city)?.g;
+}
