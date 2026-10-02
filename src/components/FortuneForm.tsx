@@ -8,7 +8,7 @@ import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
 import Glyph, { CHART_TRIGRAM } from "./Glyph";
 import BaziChart from "./BaziChart";
 import BirthInput from "./BirthInput";
-import { renderFortuneHtml } from "@/lib/sanitize";
+import ReadingPanel from "./ReadingPanel";
 // 只取类型：lunar-typescript 必须留在服务端，不能被打进浏览器包
 import type { BaziChart as BaziChartData } from "@/lib/bazi";
 
@@ -96,10 +96,8 @@ export default function FortuneForm({ mode, title, description }: Props) {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
           {/* 先给盘，再给解。盘是排出来的，看得到；解是推出来的，读得懂。 */}
           {chart && <BaziChart chart={chart} />}
-          <div className="mystic-card rounded-lg p-8 border-gold-glow">
-            <h3 className="text-lg text-gold mb-5" style={{ fontFamily: "'Noto Serif SC', serif" }}>大师解读</h3>
-            <div className="fortune-text text-paper-100/80 text-sm leading-loose whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderFortuneHtml(result) }} />
-          </div>
+          {/* 解读分节呈现：每节带「结论 / 依据 / 展开」，依据必须显示出盘面出处 */}
+          <ReadingPanel content={result} />
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button onClick={() => { setResult(null); setChart(null); setFormData({}); setHasPaid(false); }} className="btn-mystic">重新测算</button>
             <button onClick={handleCopyResult} className={`btn-primary ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制结果 · 分享好友"}</button>
