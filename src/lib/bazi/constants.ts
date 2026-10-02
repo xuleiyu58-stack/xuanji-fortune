@@ -170,6 +170,20 @@ export const GAN_WU_HE: readonly (readonly [Gan, Gan, WuXing])[] = [
   ["戊", "癸", "火"],
 ];
 
+/**
+ * 四柱的宫位含义。
+ *
+ * 同一柱既是一个时间段，也是一个亲属/关系的位置 —— 命理里叫「宫」。
+ * 十神说的是「什么力量」，宫位说的是「这股力量落在谁身上、哪一段人生」。
+ * 两者要合起来看，所以界面上把它写在柱名旁边。
+ */
+export const PALACE_MEANING: Record<string, { title: string; plain: string }> = {
+  年柱: { title: "祖上宫", plain: "祖辈与家世，也主 16 岁以前的早年" },
+  月柱: { title: "父母宫", plain: "父母与兄弟，也主 17–32 岁的青年" },
+  日柱: { title: "命宫", plain: "自己与配偶，也主 33–48 岁的中年" },
+  时柱: { title: "子女宫", plain: "子女与晚年，也主 49 岁以后" },
+};
+
 /** 「十神」的固定顺序，供界面稳定排序用。 */
 export const SHI_SHEN_ORDER = [
   "比肩", "劫财", "食神", "伤官", "偏财", "正财", "七杀", "正官", "偏印", "正印",

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { SHENG, KE, type WuXing } from "../src/lib/bazi/constants.ts";
 import {
   analyzeStrength, scoreStrength, groupElements, powerByElement,
-  elementShengMe, elementKeMe, type StrengthInput,
+  elementShengMe, elementKeMe, YONG_SHEN_METHOD, type StrengthInput,
 } from "../src/lib/bazi/strength.ts";
 
 // 帮身到极致：甲木日主，四柱全是水木
@@ -121,6 +121,49 @@ test("每种判决都有一句可读结语，且带上百分比", () => {
     assert.ok(r.summary.includes(r.yongShen), "结语里应点明用神");
     assert.ok(r.summary.includes(r.verdict));
   }
+});
+
+test("十神力量排行：五组俱全、占比和为 100、由强到弱排", () => {
+  for (const input of [ALL_HELP, ALL_DRAIN]) {
+    const r = analyzeStrength(input);
+    assert.equal(r.groupPower.length, 5, "五组十神都要在");
+    assert.equal(new Set(r.groupPower.map((g) => g.group)).size, 5, "不应有重复的组");
+
+    const sum = r.groupPower.reduce((s, g) => s + g.percent, 0);
+    assert.ok(Math.abs(sum - 100) <= 2, `占比之和应接近 100，实际 ${sum}`);
+
+    for (let i = 1; i < r.groupPower.length; i++) {
+      assert.ok(
+        r.groupPower[i - 1].weight >= r.groupPower[i].weight,
+        "应按权重降序排列"
+      );
+    }
+  }
+});
+
+test("全帮身的盘比劫与印最旺；全耗身的盘财官杀最旺", () => {
+  const strong = analyzeStrength(ALL_HELP).groupPower;
+  const topTwo = strong.slice(0, 2).map((g) => g.group);
+  assert.ok(topTwo.includes("比劫"), `全帮身的盘比劫应当在最前，实际前二为 ${topTwo}`);
+
+  const weak = analyzeStrength(ALL_DRAIN).groupPower;
+  const weakTop = weak.slice(0, 2).map((g) => g.group);
+  assert.ok(
+    weakTop.includes("官杀") || weakTop.includes("财") || weakTop.includes("食伤"),
+    `全耗身的盘前二应是耗身那几组，实际 ${weakTop}`
+  );
+});
+
+test("每一组都带可显示的中文标签", () => {
+  for (const g of analyzeStrength(ALL_HELP).groupPower) {
+    assert.ok(g.label.length >= 2, `${g.group} 缺标签`);
+  }
+});
+
+test("用神取法口径写明了它不是定论", () => {
+  assert.match(YONG_SHEN_METHOD, /各家不同/);
+  assert.match(YONG_SHEN_METHOD, /调候/);
+  assert.match(YONG_SHEN_METHOD, /不是定论/);
 });
 
 test("五行势力汇总：help 与 drain 分别累加，保留两位小数", () => {

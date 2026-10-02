@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   dayOfYear, equationOfTimeMinutes, trueSolarOffsetMinutes,
   toTrueSolarTime, formatClock, describeOffset,
+  standardTimeFor, HISTORICAL_ZONES,
 } from "../src/lib/bazi/solar-time.ts";
 import {
   REGIONS, PROVINCE_NAMES, citiesOf, countiesOf, longitudeOfCity, isApproximate, longitudeOf,
@@ -175,6 +176,46 @@ test("省市县三级联动取得到数据", () => {
   assert.ok(counties.length >= 5, `乌鲁木齐应有多个区县，实际 ${counties.length}`);
   assert.equal(citiesOf("不存在省").length, 0);
   assert.equal(countiesOf("北京市", "不存在市").length, 0);
+});
+
+// ── 1949 年前的历史时区 ──────────────────────────────────
+
+test("1949 年起全国统一北京时间，不再分时区", () => {
+  for (const y of [1949, 1990, 2026]) {
+    const z = standardTimeFor(87.62, y);
+    assert.equal(z.offsetHours, 8, `${y} 年应当用东八区`);
+    assert.equal(z.name, "北京时间");
+  }
+});
+
+test("1949 年前按经度就近取那五个时区之一", () => {
+  // 时区当年就是按地理划的，所以取最近的中央经线
+  assert.equal(standardTimeFor(75.99, 1935).offsetHours, 5.5, "喀什应属昆仑时区");
+  assert.equal(standardTimeFor(87.62, 1935).offsetHours, 6, "乌鲁木齐应属新藏时区");
+  assert.equal(standardTimeFor(104.07, 1935).offsetHours, 7, "成都应属陇蜀时区");
+  assert.equal(standardTimeFor(116.41, 1935).offsetHours, 8, "北京应属中原标准时区");
+  assert.equal(standardTimeFor(126.53, 1935).offsetHours, 8.5, "哈尔滨应属长白时区");
+});
+
+test("时区名取得出来，供界面如实标注", () => {
+  for (const [lng, want] of [[75.99, "昆仑"], [87.62, "新藏"], [104.07, "陇蜀"], [116.41, "中原"], [126.53, "长白"]] as const) {
+    assert.ok(standardTimeFor(lng, 1935).name.includes(want), `${lng} 应归${want}时区`);
+  }
+});
+
+test("民国时期取错时区会差整整两个小时 —— 那正好是一个时辰", () => {
+  const d = 15;
+  // 同一个钟表读数、同一个经度，只是钟表走的时区不同
+  const modern = trueSolarOffsetMinutes(87.62, 1990, 6, d, 8); // 按东八区
+  const republic = trueSolarOffsetMinutes(87.62, 1935, 6, d, 6); // 按新藏时区
+
+  // 新藏时区（UTC+6）的钟表读数比北京晚两小时，所以按东八区去减会**多减**两小时，
+  // 算出来的真太阳时偏早 120 分钟 —— 方向不能记反。
+  assert.ok(
+    Math.abs(republic - modern - 120) < 1,
+    `两者应差约 120 分钟（民国值更晚），实际 ${(republic - modern).toFixed(1)}`
+  );
+  assert.ok(modern < republic, "按现代时区算出来的真太阳时应当偏早");
 });
 
 test("经度是估值的地方被如实标出来，不冒充实测值", () => {

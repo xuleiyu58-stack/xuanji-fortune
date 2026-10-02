@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { BaziChart as Chart, WuXing, ShenShaTone } from "@/lib/bazi";
-import { SHEN_SHA_CAVEAT } from "@/lib/bazi";
+import { SHEN_SHA_CAVEAT, PALACE_MEANING, YONG_SHEN_METHOD } from "@/lib/bazi";
 
 /**
  * 命盘。
@@ -99,6 +99,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               <span className="text-paper-100/45">
                 按{chart.birthPlace}的经度换算，差 {chart.solarOffsetMinutes} 分钟
                 {chart.birthPlaceApproximate && "（该地经度为省内估值）"}
+                {chart.standardTimeZone && `（${chart.standardTimeZone}，1949 年前中国分五个时区）`}
               </span>
             </>
           ) : (
@@ -171,6 +172,36 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             </div>
           ))}
         </div>
+        {/* 取用神是八字里分歧最大的一步，口径必须摆明，不能让人以为是定论 */}
+        <p className="text-paper-100/35 text-xs mt-4 leading-relaxed">{YONG_SHEN_METHOD}</p>
+      </Section>
+
+      {/* ── 十神力量 ───────────────────────────────────── */}
+      <Section
+        title="十神力量"
+        hint="身强身弱回答「我够不够强」，这一节回答「我的力气花在哪」。哪一组最旺，只说明那股力量在命里占的位置最重 —— 它无关于吉凶。"
+      >
+        <div className="space-y-2.5">
+          {strength.groupPower.map((g, i) => (
+            <div key={g.group} className="flex items-center gap-3">
+              <span className={`w-28 shrink-0 text-xs ${i === 0 ? "text-gold-300" : "text-paper-100/55"}`}>
+                {g.label}
+              </span>
+              <div className="flex-1 h-1.5 rounded-full bg-paper-100/[0.07] overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${i === 0 ? "bg-gold-400/70" : "bg-paper-100/25"}`}
+                  style={{ width: `${Math.max(g.percent, 2)}%` }}
+                />
+              </div>
+              <span className="w-10 text-right text-xs text-paper-100/45 tabular-nums shrink-0">
+                {g.percent}%
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-paper-100/35 text-xs mt-4 leading-relaxed">
+          计算方法与上面的强弱判定同源：天干计 0.8，地支藏干按本气 1 / 中气 0.5 / 余气 0.25，月支整体乘 2。
+        </p>
       </Section>
 
       {/* ── 四柱 ───────────────────────────────────────── */}
@@ -186,7 +217,12 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 p.isDayMaster ? "border-gold-500/45 bg-gold-500/[0.07]" : "border-gold-300/10 bg-mystic-800/40"
               }`}
             >
-              <div className="text-[11px] tracking-[0.2em] text-paper-100/40 mb-3">{p.label}</div>
+              <div className="text-[11px] tracking-[0.2em] text-paper-100/40">{p.label}</div>
+              {/* 宫位：同一柱既是一段时间，也是一个亲属/关系的位置。
+                  十神说「什么力量」，宫位说「这股力量落在谁身上、哪一段人生」。 */}
+              <div className="text-[10px] text-paper-100/30 mb-3">
+                {PALACE_MEANING[p.label]?.title ?? ""}
+              </div>
               {/* 十神紧贴天干**上方** —— 它描述的就是这个天干字。
                   放在地支下面会让人以为它说的是地支。 */}
               <div className="text-[11px] text-paper-100/60 mb-1.5">{p.shiShen}</div>
@@ -220,8 +256,17 @@ export default function BaziChart({ chart }: { chart: Chart }) {
           ))}
         </div>
         <p className="text-paper-100/35 text-xs mt-3 leading-relaxed">
-          藏干＝地支里藏着的天干，往往是一个人的根底；下面那行十神是藏干对日主的关系。
+          藏干＝地支里藏着的天干，往往是一个人的根底；旁边那行十神是藏干对日主的关系。
           十二长生（长生／沐浴／临官／帝旺…）说明这一柱对日主是助力还是消耗，临官与帝旺最有力。
+          柱名下面那行是<b className="text-paper-100/50 font-normal">宫位</b>——
+          同一柱既是一段时间，也是一个关系位置：
+          {chart.pillars.map((p, i) => (
+            <span key={p.label}>
+              {i > 0 ? "；" : " "}
+              {p.label}主{PALACE_MEANING[p.label]?.plain ?? ""}
+            </span>
+          ))}
+          。
         </p>
       </Section>
 
@@ -417,6 +462,45 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 );
               })}
             </div>
+
+            {/* 流月：只给当年那一个流年带上，理由见 LiuNianStep 的注释 */}
+            {(() => {
+              const thisYear = chart.daYun[openDaYun].liuNian.find((n) => n.year === nowYear);
+              if (!thisYear?.liuYue?.length) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-gold-300/10">
+                  <div className="text-paper-100/35 text-xs mb-2">{nowYear} 年的十二流月</div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {thisYear.liuYue.map((m) => (
+                      <div key={m.month} className="rounded border border-gold-300/10 px-1.5 py-1.5 text-center">
+                        <div className="text-[11px] text-paper-100/65" style={SERIF}>{m.ganZhi}</div>
+                        <div className="text-[10px] text-paper-100/30">{m.month}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 小运：与流年并列的十年。流年看外象，小运看内因，两者合看更细 */}
+            {chart.daYun[openDaYun].xiaoYun.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gold-300/10">
+                <div className="text-paper-100/35 text-xs mb-2">
+                  小运
+                  <span className="text-paper-100/25 ml-2">
+                    与流年并行的另一条线，看内在的起心动念
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {chart.daYun[openDaYun].xiaoYun.map((x) => (
+                    <div key={x.year} className="rounded border border-gold-300/10 px-2 py-1.5 text-center">
+                      <div className="text-[13px] text-paper-100/65" style={SERIF}>{x.ganZhi}</div>
+                      <div className="text-[10px] text-paper-100/30 tabular-nums">{x.age} 岁</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Section>

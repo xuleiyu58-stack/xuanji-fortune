@@ -41,17 +41,65 @@ export function equationOfTimeMinutes(year: number, month: number, day: number):
 }
 
 /**
+ * 中国在 1949 年前用过的五个时区。
+ *
+ * 时区当年就是**按地理划的**，所以这里按经度取最近的中央经线，而不是去查
+ * 一份我拿不准的省界对照表 —— 那份表各家画得都不一样，写进去等于伪造精度。
+ *
+ * 1949 年之后全国统一用北京时间（东八区），不再需要这张表。
+ */
+export const HISTORICAL_ZONES: readonly {
+  meridian: number;
+  offsetHours: number;
+  name: string;
+}[] = [
+  { meridian: 82.5, offsetHours: 5.5, name: "昆仑时区" },
+  { meridian: 90, offsetHours: 6, name: "新藏时区" },
+  { meridian: 105, offsetHours: 7, name: "陇蜀时区" },
+  { meridian: 120, offsetHours: 8, name: "中原标准时区" },
+  { meridian: 127.5, offsetHours: 8.5, name: "长白时区" },
+];
+
+/** 全国统一用北京时间的年份。 */
+const UNIFIED_YEAR = 1949;
+
+/**
+ * 某地在某年实际使用的标准时。
+ *
+ * 1949 年起一律东八区；此前按经度就近取那五个时区之一。
+ * 这一步不做的话，民国时期出生在西部的人会被多减一两个小时 —— 正好一个时辰。
+ */
+export function standardTimeFor(
+  longitude: number,
+  year: number
+): { offsetHours: number; name: string } {
+  if (year >= UNIFIED_YEAR) return { offsetHours: 8, name: "北京时间" };
+
+  let best = HISTORICAL_ZONES[3];
+  for (const z of HISTORICAL_ZONES) {
+    if (Math.abs(z.meridian - longitude) < Math.abs(best.meridian - longitude)) best = z;
+  }
+  return { offsetHours: best.offsetHours, name: best.name };
+}
+
+/**
  * 真太阳时相对钟表时间的偏移（分钟）。正数表示真太阳时更快（钟表落后）。
  *
- * = 经度时差 + 均时差
+ * = 钟表所依据的时区与当地经度之差 + 均时差
+ *
+ * `offsetHours` 是那块表当时实际用的标准时，默认东八区。
+ * 民国时期要传 `standardTimeFor()` 的结果 —— 否则会少减一两个小时。
  */
 export function trueSolarOffsetMinutes(
   longitude: number,
   year: number,
   month: number,
-  day: number
+  day: number,
+  offsetHours = CHINA_STANDARD_MERIDIAN / 15
 ): number {
-  const longitudeOffset = (longitude - CHINA_STANDARD_MERIDIAN) * MINUTES_PER_DEGREE;
+  // 当地平太阳时相对钟表时间的差：经度每度 4 分钟，减去时区自身的偏移
+  const longitudeOffset =
+    longitude * MINUTES_PER_DEGREE - offsetHours * 60;
   return longitudeOffset + equationOfTimeMinutes(year, month, day);
 }
 
@@ -78,9 +126,10 @@ export function toTrueSolarTime(
   longitude: number,
   year: number,
   month: number,
-  day: number
+  day: number,
+  offsetHours?: number
 ): TrueSolarResult {
-  const rawOffset = trueSolarOffsetMinutes(longitude, year, month, day);
+  const rawOffset = trueSolarOffsetMinutes(longitude, year, month, day, offsetHours);
   const offsetMinutes = Math.round(rawOffset);
 
   let total = hour * 60 + minute + offsetMinutes;

@@ -27,12 +27,15 @@ import {
 import { analyzeStrength, type StrengthResult } from "./strength.ts";
 import { analyzePattern, type PatternResult } from "./pattern.ts";
 import { findShenSha, type ShenShaHit } from "./shensha.ts";
-import { formatClock, toTrueSolarTime } from "./solar-time.ts";
+import { formatClock, standardTimeFor, toTrueSolarTime } from "./solar-time.ts";
 import { isApproximate, longitudeOf, longitudeOfCity } from "./places.ts";
 
 export type { WuXing, ShiShen, ChangSheng, Zhi } from "./constants.ts";
 export { SHI_SHEN_MEANING } from "./relations.ts";
 export { SHEN_SHA_CAVEAT } from "./shensha.ts";
+export { PALACE_MEANING } from "./constants.ts";
+export { YONG_SHEN_METHOD, groupPower } from "./strength.ts";
+export { HISTORICAL_ZONES, standardTimeFor } from "./solar-time.ts";
 export type { StrengthResult } from "./strength.ts";
 export type { PatternResult } from "./pattern.ts";
 export type { ShenShaHit, ShenShaTone } from "./shensha.ts";
@@ -91,7 +94,25 @@ export interface ElementTally {
   percent: number;
 }
 
+export interface LiuYueStep {
+  /** 月名，如「正月」 */
+  month: string;
+  ganZhi: string;
+}
+
 export interface LiuNianStep {
+  year: number;
+  age: number;
+  ganZhi: string;
+  /**
+   * 该年的十二个流月。**只给当年那一个流年带上** ——
+   * 八步大运各带十年、每年再带十二月，全塞进响应就是近千条，
+   * 而用户真正会看的通常只有眼下这一年。想看别的年份，换一年再排即可。
+   */
+  liuYue?: LiuYueStep[];
+}
+
+export interface XiaoYunStep {
   year: number;
   age: number;
   ganZhi: string;
@@ -104,6 +125,8 @@ export interface DaYunStep {
   startAge: number;
   /** 这一步大运里的十个流年 */
   liuNian: LiuNianStep[];
+  /** 与流年并列的「小运」，同样十年 */
+  xiaoYun: XiaoYunStep[];
 }
 
 export interface ChartRelations {
@@ -168,6 +191,8 @@ export interface BaziChart {
   birthPlace?: string;
   /** 该市经度是省内中位数估值而非实测（界面上要如实标出） */
   birthPlaceApproximate?: boolean;
+  /** 出生时钟表实际依据的时区名。1949 年后统一北京时间，则为 undefined */
+  standardTimeZone?: string;
   /** 校正后的时间是否落到了另一天 —— 会影响日柱，必须在界面上讲明白 */
   trueSolarCrossedDay?: boolean;
   /** 跨日时，排盘实际所用的日期（与上报的生日不同，界面需并列显示） */
@@ -313,11 +338,16 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
   let trueSolarTime: string | undefined;
   let solarOffsetMinutes: number | undefined;
   let trueSolarCrossedDay: boolean | undefined;
+  /** 民国时期出生的人，钟表走的可能不是东八区 —— 用了哪个要如实记下来 */
+  let usedZoneName: string | undefined;
 
   // 优先按「省 + 市」查（跨省重名时才不会取错）；只有市名时退回按市名查
   const longitude = longitudeOfCity(input.province, input.city) ?? longitudeOf(input.city);
   if (longitude !== undefined) {
-    const r = toTrueSolarTime(time.hour, time.minute, longitude, gy, gm, gd);
+    // 1949 年前中国分五个时区，钟表走的未必是东八区 —— 按经度取当年实际用的那个
+    const zone = standardTimeFor(longitude, gy);
+    const r = toTrueSolarTime(time.hour, time.minute, longitude, gy, gm, gd, zone.offsetHours);
+    usedZoneName = zone.offsetHours === 8 ? undefined : zone.name;
     hour = r.hour;
     minute = r.minute;
     trueSolarTime = formatClock(r.hour, r.minute);
@@ -397,21 +427,38 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     pillars: pillars.map((p) => ({ label: p.label, gan: p.gan, zhi: p.zhi })),
   };
 
+  const currentYear = new Date().getFullYear();
   const yun = ec.getYun(input.gender === "男" ? 1 : 0);
   const daYun: DaYunStep[] = yun
     .getDaYun()
     .slice(1) // 第 0 步是起运前的本命，不展示
     .slice(0, 8)
     .map((d) => {
-      const liuNian: LiuNianStep[] = d
-        .getLiuNian(10)
-        .map((n) => ({ year: n.getYear(), age: n.getAge(), ganZhi: n.getGanZhi() }));
+      const liuNian: LiuNianStep[] = d.getLiuNian(10).map((n) => {
+        const base: LiuNianStep = { year: n.getYear(), age: n.getAge(), ganZhi: n.getGanZhi() };
+        // 只给当年那一个流年配流月，理由见 LiuNianStep 的注释
+        if (base.year === currentYear) {
+          base.liuYue = n.getLiuYue().map((m) => ({
+            month: m.getMonthInChinese(),
+            ganZhi: m.getGanZhi(),
+          }));
+        }
+        return base;
+      });
+
+      const xiaoYun: XiaoYunStep[] = d.getXiaoYun(10).map((x) => ({
+        year: x.getYear(),
+        age: x.getAge(),
+        ganZhi: x.getGanZhi(),
+      }));
+
       return {
         ganZhi: d.getGanZhi(),
         startYear: d.getStartYear(),
         endYear: d.getEndYear(),
         startAge: d.getStartAge(),
         liuNian,
+        xiaoYun,
       };
     });
 
@@ -455,6 +502,7 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
         ? [input.province, input.city].filter(Boolean).join(" ")
         : undefined,
     birthPlaceApproximate: longitude !== undefined ? isApproximate(input.city) : undefined,
+    standardTimeZone: usedZoneName,
     trueSolarCrossedDay,
     chartDateText: crossedToText,
   };
@@ -521,6 +569,7 @@ export function chartToPrompt(chart: BaziChart): string {
     rel.length ? `干支关系：${rel.join("，")}` : "干支之间无合冲",
     shenSha ? `神煞：${shenSha}` : "无显著神煞",
     `胎元${chart.taiYuan}　命宫${chart.mingGong}　身宫${chart.shenGong}`,
+    `十神力量排行（由强到弱）：${chart.strength.groupPower.map((g) => `${g.group} ${g.percent}%`).join("，")}`,
     `起运：${chart.startAgeText}`,
     `大运：${daYun}`,
     currentLiuNian

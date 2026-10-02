@@ -95,6 +95,8 @@ export interface StrengthResult {
   entries: StrengthEntry[];
   /** 各组的五行，供界面解释「你的官杀是金」这类话 */
   groups: GroupElements;
+  /** 五组十神的力量排行 —— 身强身弱说「够不够强」，这个说「力气花在哪」 */
+  groupPower: GroupPower[];
 }
 
 function groupOf(dayElement: WuXing, element: WuXing): keyof GroupElements {
@@ -217,8 +219,58 @@ export function analyzeStrength(input: StrengthInput): StrengthResult {
 
   return {
     verdict, ratio, helpScore, drainScore, yongShen, xiShen, jiShen, summary, entries, groups,
+    groupPower: groupPower(entries),
   };
 }
+
+export interface GroupPower {
+  group: keyof GroupElements;
+  /** 五组十神的中文名，直接可显示 */
+  label: string;
+  weight: number;
+  percent: number;
+}
+
+const GROUP_LABEL: Record<keyof GroupElements, string> = {
+  比劫: "比劫 · 同我者",
+  食伤: "食伤 · 我生者",
+  财: "财星 · 我克者",
+  官杀: "官杀 · 克我者",
+  印: "印星 · 生我者",
+};
+
+/**
+ * 按十神五组汇总力量并排行。
+ *
+ * 身强身弱回答的是「我够不够强」，这个问题回答的是「我的力气花在哪」——
+ * 两者合起来才看得出一个人是靠什么立身、又在哪一路失衡。
+ * 排序无关于吉凶：哪一组最旺，只说明那股力量在命里占的位置最重。
+ */
+export function groupPower(entries: readonly StrengthEntry[]): GroupPower[] {
+  const acc: Record<keyof GroupElements, number> = { 比劫: 0, 食伤: 0, 财: 0, 官杀: 0, 印: 0 };
+  for (const e of entries) acc[e.group] += e.weight;
+
+  const total = Object.values(acc).reduce((s, v) => s + v, 0) || 1;
+  return (Object.keys(acc) as (keyof GroupElements)[])
+    .map((group) => ({
+      group,
+      label: GROUP_LABEL[group],
+      weight: Math.round(acc[group] * 100) / 100,
+      percent: Math.round((acc[group] / total) * 100),
+    }))
+    .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 用神取法的口径说明。
+ *
+ * 取用神是八字里分歧最大的一步。本站用的是最通行、也最容易讲清楚的一套，
+ * 但它不是唯一的一套 —— 这份说明要原样显示给用户，不能让他以为这是定论。
+ */
+export const YONG_SHEN_METHOD =
+  "取用神各家不同。本站用的是最通行的一套：身强就从官杀、食伤、财里取一个在盘中有力的，身弱就从印、比劫里取。" +
+  "正统还要再看调候（寒暖燥湿）、通关（两强相争取中间那个）与病药（哪一处是病、哪一味是药）—— 这三样没有收录，" +
+  "所以这里的用神只是一个起点，不是定论。";
 
 /** 把「帮身 / 耗身」的账目按五行汇总，供界面画势力对比。 */
 export function powerByElement(entries: readonly StrengthEntry[]): Record<WuXing, { help: number; drain: number }> {
