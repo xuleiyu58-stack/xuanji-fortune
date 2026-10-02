@@ -11,11 +11,8 @@ export default function Footer() {
         <p className="text-paper-100/30 text-xs tracking-wider">
           本网站内容仅供娱乐参考，命运掌握在自己手中
         </p>
-        <div className="flex gap-6 text-xs text-paper-100/30 tracking-wider">
-          <a href="#" className="hover:text-gold-300 transition-colors">关于我们</a>
-          <a href="#" className="hover:text-gold-300 transition-colors">免责声明</a>
-          <a href="#" className="hover:text-gold-300 transition-colors">联系客服</a>
-        </div>
+        {/* 这里原有三个 href="#" 的死链（关于我们 / 免责声明 / 联系客服），
+            点了只是跳回页顶。等真正写出法律页再挂回来，不要用空锚点占位。 */}
       </div>
     </footer>
   );

@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "玄机 - AI 命理解读 | 八字 · 运势 · 塔罗 · 姻缘",
-  description: "融合千年玄学智慧与人工智能，为您提供精准的八字命理、每日运势、姻缘配对、塔罗占卜等命理解读服务。知天命，掌人生。",
-  keywords: "算命,八字,运势,塔罗,姻缘,命理,占卜,AI算命,在线算命,免费算命",
+  title: "玄机 · 八字命理 | 程序排盘，AI 解读",
+  description:
+    "子平八字在线排盘。四柱、藏干、十神、神煞、五行、大运由程序精确推算，AI 只负责解读已排好的盘。不替你决定命运，只把此刻的命局讲清楚。",
+  keywords: "八字,四柱,排盘,子平,命理,十神,五行,大运,日主,AI算命,在线排盘",
   openGraph: {
-    title: "玄机 - AI 命理解读",
-    description: "融合千年玄学智慧与人工智能，知天命，掌人生。",
+    title: "玄机 · 八字命理",
+    description: "程序排盘，AI 解读。知其所来，明其所往。",
     type: "website",
     locale: "zh_CN",
   },

@@ -50,8 +50,7 @@ export default function MemberPage() {
               <h1 className="text-3xl text-gold mb-4" style={{ fontFamily: "'Noto Serif SC', serif" }}>{purchased ? "功德圆满！" : "已是会员"}</h1>
               <p className="text-paper-100/50 text-sm mb-8 leading-relaxed">{purchased ? `您已成功开通${selectedPlan.name}，感谢您的信赖与布施。` : "您已是玄机会员，全模式无限次解读。"}</p>
               <div className="flex flex-col gap-3">
-                <Link href="/fortune/bazi" className="btn-primary">立即体验八字命理</Link>
-                <Link href="/fortune/daily" className="btn-mystic">查看今日运势</Link>
+                <Link href="/" className="btn-primary">立即开始排盘</Link>
               </div>
             </motion.div>
           </div>
