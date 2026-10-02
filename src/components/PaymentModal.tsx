@@ -57,9 +57,9 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
                 </div>
 
                 <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
-                  <p className="text-gray-700 text-xs mb-2 font-medium">微信扫码支付</p>
+                  <p className="text-gray-700 text-xs mb-2 font-medium">支付宝扫码支付</p>
                   {qrFailed ? (
-                    <div className="w-44 h-44 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
+                    <div className="w-52 h-64 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
                       <span className="text-gray-400 text-xs leading-relaxed">
                         收款码暂未就绪
                         <br />
@@ -68,20 +68,22 @@ export default function PaymentModal({ open, onClose, title, price, onConfirm }:
                     </div>
                   ) : (
                     <>
+                      {/* 收款码是整张竖版海报（1260×1890）。强塞进正方形会让二维码缩到约 100px、
+                          扫不动，所以只固定宽度、按原始比例显示（渲染约 208×312，二维码约 180px）。 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src="/qrcode.jpg"
-                        alt="微信收款码"
-                        className="w-44 h-44 object-contain rounded"
+                        alt="支付宝收款码"
+                        className="w-52 h-auto rounded"
                         onError={() => setQrFailed(true)}
                       />
-                      <p className="text-gray-400 text-[10px] mt-1">长按识别或截图扫描</p>
+                      <p className="text-gray-400 text-[10px] mt-2">长按识别或截图扫描</p>
                     </>
                   )}
                 </div>
 
                 <p className="text-paper-100/40 text-xs mb-2">
-                  请使用微信或支付宝扫码支付
+                  请使用支付宝扫码支付
                 </p>
                 <p className="text-paper-100/30 text-xs mb-6">
                   支付完成后，点击下方按钮确认
