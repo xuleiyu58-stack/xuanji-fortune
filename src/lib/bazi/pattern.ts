@@ -131,9 +131,11 @@ export function analyzePattern(input: PatternInput): PatternResult | null {
     basis: "月支本气",
     transparent,
     plain: PATTERN_PLAIN[name] ?? PLAIN_FALLBACK,
+    // 措辞上刻意不让天干字紧挨着「未透」二字 —— 「丁未透天干」会被读成干支「丁未」，
+    // 而这里说的是「丁 没有 透出天干」。换成「本气…」起头就不歧义了。
     note:
       `月支为${month.zhi}，本气藏${benGan}，${benGan}对日主${input.dayGan}为「${benShen}」，故取${name}。` +
-      (transparent ? `${benGan}又透出天干，格局较清。` : `${benGan}未透天干，格局稍隐。`),
+      (transparent ? "本气透出天干，格局较清。" : "本气藏而不透，格局稍隐。"),
   };
 }
 

@@ -91,7 +91,9 @@ test("透干会被标出来，并在说明里写明", () => {
 
   const q = analyzePattern(jiaWithMonth("酉", "丙"))!;
   assert.equal(q.transparent, false);
-  assert.match(q.note, /未透天干/);
+  assert.match(q.note, /藏而不透/);
+  // 措辞不得让天干字紧挨「未透」——「丁未透天干」会被读成干支「丁未」
+  assert.doesNotMatch(q.note, /[甲乙丙丁戊己庚辛壬癸]未透/);
 });
 
 test("十种月支对甲日都能取到一个格，没有落空的", () => {

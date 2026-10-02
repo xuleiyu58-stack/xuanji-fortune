@@ -352,7 +352,7 @@ export function chartToPrompt(chart: BaziChart): string {
     `日主：${chart.dayMaster}（${chart.dayMasterElement}）`,
     `五行分布：${elements}`,
     chart.missing.length ? `全局缺：${chart.missing.join("、")}` : "五行俱全",
-    `身强身弱：${chart.strength.verdict}（${chart.strength.summary}）`,
+    `日主强弱：${chart.strength.summary}`,
     chart.pattern ? `格局：${chart.pattern.name} —— ${chart.pattern.note}` : "格局：未能取格",
     rel.length ? `干支关系：${rel.join("，")}` : "干支之间无合冲",
     shenSha ? `神煞：${shenSha}` : "无显著神煞",
