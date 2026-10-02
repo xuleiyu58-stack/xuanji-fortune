@@ -111,6 +111,10 @@ export interface ChartRelations {
   he: BranchPair[];
   /** 地支相冲 */
   chong: BranchPair[];
+  /** 地支相刑与自刑 */
+  xing: BranchPair[];
+  /** 地支相害 */
+  hai: BranchPair[];
   /** 三合 / 半合 */
   triple: TripleHarmony[];
   /** 天干五合 */
@@ -378,9 +382,12 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
 
   const zhiList = pillars.map((p) => p.zhi);
   const ganList = pillars.map((p) => p.gan);
+  const branchRels = branchRelations(zhiList);
   const relations: ChartRelations = {
-    he: branchRelations(zhiList).filter((r) => r.kind === "六合"),
-    chong: branchRelations(zhiList).filter((r) => r.kind === "相冲"),
+    he: branchRels.filter((r) => r.kind === "六合"),
+    chong: branchRels.filter((r) => r.kind === "相冲"),
+    xing: branchRels.filter((r) => r.kind === "相刑" || r.kind === "自刑"),
+    hai: branchRels.filter((r) => r.kind === "相害"),
     triple: tripleHarmonies(zhiList),
     ganHe: stemHarmonies(ganList),
   };
@@ -470,6 +477,10 @@ export function chartToPrompt(chart: BaziChart): string {
   const rel: string[] = [];
   for (const r of chart.relations.he) rel.push(`${r.pair.join("")}六合化${r.element}`);
   for (const r of chart.relations.chong) rel.push(`${r.pair.join("")}相冲`);
+  for (const r of chart.relations.xing) {
+    rel.push(r.kind === "自刑" ? `${r.pair[0]}${r.pair[1]}自刑` : `${r.pair.join("")}相刑`);
+  }
+  for (const r of chart.relations.hai) rel.push(`${r.pair.join("")}相害`);
   for (const t of chart.relations.triple) {
     rel.push(`${t.branches.join("")}${t.complete ? "三合" : "半合"}${t.element}局`);
   }

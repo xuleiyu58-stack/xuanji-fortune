@@ -6,7 +6,8 @@
  */
 
 import {
-  GAN_WU_HE, KE, SHENG, ZHI_LIU_HE, ZHI_SAN_HE,
+  GAN_WU_HE, KE, SHENG, ZHI, ZHI_LIU_HE, ZHI_LIU_HAI, ZHI_SAN_HE,
+  ZHI_XIANG_XING, ZHI_ZI_XING,
   GAN_ELEMENT, ZHI_ELEMENT, ganIsYang, zhiIsYang,
   type ShiShen, type WuXing, type Zhi,
 } from "./constants.ts";
@@ -64,40 +65,60 @@ export const SHI_SHEN_MEANING: Record<ShiShen, { keyword: string; plain: string 
   正印: { keyword: "庇荫", plain: "生扶我而与我异性。主学识、庇护、长辈缘，是让人心里有底的那一面。" },
 };
 
+export type BranchRelationKind = "六合" | "相冲" | "相刑" | "自刑" | "相害";
+
 export interface BranchPair {
   /** 参与关系的地支 */
   pair: readonly [Zhi, Zhi];
-  kind: "六合" | "相冲";
-  /** 六合化出的五行；相冲没有 */
+  kind: BranchRelationKind;
+  /** 六合化出的五行；其余种没有 */
   element?: WuXing;
 }
 
-/** 找出四支之间的六合与相冲。 */
+/**
+ * 找出四支之间的六合、相冲、相刑、自刑、相害。
+ *
+ * 合冲刑害是并列的四类关系，缺一样都会让盘读不完整 —— 早先只做了合与冲，
+ * 于是"寅巳申三刑"这种在盘上明明存在的结构，界面上一个字都看不到。
+ *
+ * 计法上做了两处区分：
+ *   · 六合 / 相冲 / 相刑 / 相害都是"两支不同"，所以对**去重后**的支两两配对，
+ *     免得同一对因重复出现而被报好几次；
+ *   · 自刑反过来 —— 它要求同一个支**出现两次**（辰辰、午午…），
+ *     所以它查的是原始列表里的重复。
+ */
 export function branchRelations(zhiList: readonly string[]): BranchPair[] {
   const out: BranchPair[] = [];
   const uniq = [...new Set(zhiList)];
 
-  for (let i = 0; i < zhiList.length; i++) {
-    for (let j = i + 1; j < zhiList.length; j++) {
-      const a = zhiList[i];
-      const b = zhiList[j];
-      const he = ZHI_LIU_HE.find(
-        ([x, y]) => (x === a && y === b) || (x === b && y === a)
-      );
-      if (he) out.push({ pair: [a as Zhi, b as Zhi], kind: "六合", element: he[2] });
-    }
-  }
+  const hits = (table: readonly (readonly [Zhi, Zhi])[], a: string, b: string) =>
+    table.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 
-  // 相冲按"有就报一次"计，同一个支不重复出现
   for (let i = 0; i < uniq.length; i++) {
     for (let j = i + 1; j < uniq.length; j++) {
       const a = uniq[i];
       const b = uniq[j];
-      const ia = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"].indexOf(a);
-      const ib = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"].indexOf(b);
+
+      const he = ZHI_LIU_HE.find(([x, y]) => (x === a && y === b) || (x === b && y === a));
+      if (he) out.push({ pair: [a as Zhi, b as Zhi], kind: "六合", element: he[2] });
+
+      const ia = (ZHI as readonly string[]).indexOf(a);
+      const ib = (ZHI as readonly string[]).indexOf(b);
       if (ia >= 0 && ib >= 0 && (ia + 6) % 12 === ib) {
         out.push({ pair: [a as Zhi, b as Zhi], kind: "相冲" });
       }
+
+      if (hits(ZHI_XIANG_XING, a, b)) out.push({ pair: [a as Zhi, b as Zhi], kind: "相刑" });
+      if (hits(ZHI_LIU_HAI, a, b)) out.push({ pair: [a as Zhi, b as Zhi], kind: "相害" });
+      // 一对支可能同时带几种关系（巳申既合又刑、寅巳既刑又害），
+      // 这里如实全报 —— 那不是重复，是命局里真实并存的两股力。
+    }
+  }
+
+  // 自刑：同一个支出现两次以上
+  for (const z of ZHI_ZI_XING) {
+    if (zhiList.filter((x) => x === z).length >= 2) {
+      out.push({ pair: [z, z], kind: "自刑" });
     }
   }
 

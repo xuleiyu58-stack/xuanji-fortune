@@ -187,6 +187,9 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               }`}
             >
               <div className="text-[11px] tracking-[0.2em] text-paper-100/40 mb-3">{p.label}</div>
+              {/* 十神紧贴天干**上方** —— 它描述的就是这个天干字。
+                  放在地支下面会让人以为它说的是地支。 */}
+              <div className="text-[11px] text-paper-100/60 mb-1.5">{p.shiShen}</div>
               <div className="text-3xl sm:text-4xl leading-none" style={{ ...SERIF, color: ELEMENT_COLOR[p.ganElement] }}>
                 {p.gan}
               </div>
@@ -194,9 +197,8 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 {p.zhi}
               </div>
 
-              <div className="text-[11px] text-paper-100/60 mt-3">{p.shiShen}</div>
-
-              {/* 藏干与支中十神 —— 地支才是根，只看天干看不全 */}
+              {/* 藏干与支中十神 —— 地支才是根，只看天干看不全。
+                  支中十神写在各自的藏干旁边，而不是单列一行，免得又跟天干混起来。 */}
               <div className="mt-3 pt-3 border-t border-gold-300/10">
                 <div className="text-[10px] text-paper-100/30 mb-1.5">藏干</div>
                 <div className="space-y-1">
@@ -292,11 +294,13 @@ export default function BaziChart({ chart }: { chart: Chart }) {
       {/* ── 合冲 ───────────────────────────────────────── */}
       {(chart.relations.he.length > 0 ||
         chart.relations.chong.length > 0 ||
+        chart.relations.xing.length > 0 ||
+        chart.relations.hai.length > 0 ||
         chart.relations.triple.length > 0 ||
         chart.relations.ganHe.length > 0) && (
         <Section
           title="干支关系"
-          hint="合是牵绊与联结，冲是对撞与变动。合与冲不是好坏的标签，而是说明命局里哪些力量在互相拉扯。"
+          hint="合是牵绊与联结，冲是对撞与变动，刑是纠缠与磨损，害是暗损与隔阂。四类都不是好坏的标签，而是说明命局里有哪些力量在互相拉扯。一对支可能同时带几种（如巳申既合又刑），那不是重复，是真实并存的两股力。"
         >
           <div className="flex flex-wrap gap-2">
             {chart.relations.ganHe.map((r, i) => (
@@ -315,8 +319,18 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               </span>
             ))}
             {chart.relations.chong.map((r, i) => (
-              <span key={`c${i}`} className="text-xs border border-vermillion-400/25 rounded px-2.5 py-1 text-paper-100/65">
+              <span key={`c${i}`} className="text-xs border border-vermillion-400/30 rounded px-2.5 py-1 text-paper-100/65">
                 {r.pair.join("")}相冲
+              </span>
+            ))}
+            {chart.relations.xing.map((r, i) => (
+              <span key={`x${i}`} className="text-xs border border-vermillion-400/22 rounded px-2.5 py-1 text-paper-100/65">
+                {r.pair[0]}{r.pair[1]}{r.kind === "自刑" ? "自刑" : "相刑"}
+              </span>
+            ))}
+            {chart.relations.hai.map((r, i) => (
+              <span key={`hh${i}`} className="text-xs border border-paper-100/20 rounded px-2.5 py-1 text-paper-100/55">
+                {r.pair.join("")}相害
               </span>
             ))}
           </div>

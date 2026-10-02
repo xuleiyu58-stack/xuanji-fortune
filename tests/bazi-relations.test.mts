@@ -183,3 +183,78 @@ test("五行关系：同/生/泄/克/被克五种都取得到", () => {
   assert.equal(elementRelation("木", "土"), "克"); // 木克土
   assert.equal(elementRelation("木", "金"), "被克"); // 金克木
 });
+
+// ── 相刑 ─────────────────────────────────────────────────
+
+const kindsOf = (zhiList: string[]) => branchRelations(zhiList).map((r) => r.kind);
+const hasKind = (zhiList: string[], kind: string, pair?: [string, string]) =>
+  branchRelations(zhiList).some(
+    (r) => r.kind === kind && (!pair || (r.pair[0] === pair[0] && r.pair[1] === pair[1]))
+  );
+
+test("无恩之刑：寅巳申三支两两相刑", () => {
+  for (const [a, b] of [["寅", "巳"], ["巳", "申"], ["申", "寅"]]) {
+    assert.ok(hasKind([a, b], "相刑"), `${a}${b} 应相刑`);
+  }
+  // 三支俱全时三对都报
+  assert.equal(branchRelations(["寅", "巳", "申"]).filter((r) => r.kind === "相刑").length, 3);
+});
+
+test("恃势之刑：丑戌未三支两两相刑", () => {
+  for (const [a, b] of [["丑", "戌"], ["戌", "未"], ["未", "丑"]]) {
+    assert.ok(hasKind([a, b], "相刑"), `${a}${b} 应相刑`);
+  }
+});
+
+test("无礼之刑：子卯相刑", () => {
+  assert.ok(hasKind(["子", "卯"], "相刑"));
+});
+
+test("自刑要有两支相同才算；单见一个不报", () => {
+  for (const z of ["辰", "午", "酉", "亥"]) {
+    assert.ok(hasKind([z, z], "自刑"), `${z}${z} 应自刑`);
+    assert.ok(!hasKind([z, "子"], "自刑"), `只一个${z}不该报自刑`);
+  }
+  // 寅不是自刑支
+  assert.ok(!hasKind(["寅", "寅"], "自刑"));
+});
+
+// ── 相害 ─────────────────────────────────────────────────
+
+test("六害全对：子未、丑午、寅巳、卯辰、申亥、酉戌", () => {
+  for (const [a, b] of [["子", "未"], ["丑", "午"], ["寅", "巳"], ["卯", "辰"], ["申", "亥"], ["酉", "戌"]]) {
+    assert.ok(hasKind([a, b], "相害"), `${a}${b} 应相害`);
+    assert.ok(hasKind([b, a], "相害"), `${b}${a} 也应相害（关系不分先后）`);
+  }
+  assert.ok(!hasKind(["子", "丑"], "相害"), "子丑是六合，不是害");
+});
+
+// ── 多关系并存 ───────────────────────────────────────────
+
+test("巳申既合又刑 —— 两种关系都要报，不是重复", () => {
+  const ks = kindsOf(["巳", "申"]);
+  assert.ok(ks.includes("六合"), "巳申应六合");
+  assert.ok(ks.includes("相刑"), "巳申也应相刑");
+});
+
+test("寅巳既刑又害", () => {
+  const ks = kindsOf(["寅", "巳"]);
+  assert.ok(ks.includes("相刑"));
+  assert.ok(ks.includes("相害"));
+});
+
+test("去重后的支才两两配对：重复出现的支不会把同一关系报好几次", () => {
+  // 三个子一个午：相冲只应报一次
+  assert.equal(branchRelations(["子", "子", "子", "午"]).filter((r) => r.kind === "相冲").length, 1);
+  // 但同时，子出现三次不构成自刑（子本就不是自刑支）
+  assert.equal(branchRelations(["子", "子", "子", "午"]).filter((r) => r.kind === "自刑").length, 0);
+});
+
+test("四种关系的名称都在合法集合内", () => {
+  const valid = new Set(["六合", "相冲", "相刑", "自刑", "相害"]);
+  for (const zhiList of [["寅", "巳", "申"], ["子", "午", "卯", "酉"], ["辰", "辰", "戌", "未"]]) {
+    for (const r of branchRelations(zhiList)) {
+      assert.ok(valid.has(r.kind), `出现了未定义的关系类型：${r.kind}`);
+    }
+  }
+});
