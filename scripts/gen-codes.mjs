@@ -73,10 +73,43 @@ async function main() {
     rows.push({ code, kind, mode, days, batch: args.batch ?? null });
   }
 
-  const { error } = await db.from("redeem_codes").insert(rows);
-  if (error) {
-    console.error("写入失败：", error.message);
+  // 插入带重试。
+  //
+  // 为什么需要：实测中偶发 `TypeError: fetch failed`（网络抖动），
+  // 而发码是一次性的手工操作 —— 失败一次就得重来，很烦。
+  // 重试是安全的：主键冲突会返回 23505，那种情况说明这批码已经写进去了，
+  // 直接当作成功，不会重复发放。
+  let written = false;
+  let lastError = "";
+  for (let attempt = 1; attempt <= 4 && !written; attempt += 1) {
+    const { error } = await db.from("redeem_codes").insert(rows);
+
+    if (!error) {
+      written = true;
+      break;
+    }
+    lastError = error.message;
+
+    // 主键冲突 = 这批码已经写成功过（上一次请求其实到了，只是回包丢了）
+    if (error.code === "23505") {
+      console.log("\n注意：这批码已存在于库中（上次请求实际写成功了，只是回包里丢了）。");
+      written = true;
+      break;
+    }
+    // 表不存在之类的结构性错误重试没有意义
+    if (/does not exist|schema cache/i.test(error.message)) break;
+
+    if (attempt < 4) {
+      const wait = attempt * 1200;
+      console.log(`写入失败（第 ${attempt} 次）：${error.message} —— ${wait}ms 后重试`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+
+  if (!written) {
+    console.error("\n写入失败：", lastError);
     console.error("若提示表不存在，先在 Supabase SQL Editor 执行 supabase/redeem.sql");
+    console.error("若是网络问题，重跑本命令即可（已写入的码不会重复发）。");
     process.exit(1);
   }
 

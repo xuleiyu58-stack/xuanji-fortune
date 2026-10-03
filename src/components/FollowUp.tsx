@@ -21,6 +21,15 @@ export interface FollowUpProps {
   birth: Record<string, string>;
   /** 首轮解读原文，作为上下文节选传回去 */
   previous: string;
+  /**
+   * 是否已持有权益（会员或该模式的单次券）。
+   *
+   * 追问走的是同一个服务端闸门，未解锁时必然 403 —— 与其让用户写完问题
+   * 再吃一个错误，不如一开始就把兑换入口摆出来。
+   */
+  unlocked: boolean;
+  /** 未解锁时点「去激活」的动作 */
+  onNeedUnlock: () => void;
 }
 
 interface QA {
@@ -29,7 +38,7 @@ interface QA {
   error?: string;
 }
 
-export default function FollowUp({ birth, previous }: FollowUpProps) {
+export default function FollowUp({ birth, previous, unlocked, onNeedUnlock }: FollowUpProps) {
   const [question, setQuestion] = useState("");
   const [items, setItems] = useState<QA[]>([]);
   const [busy, setBusy] = useState(false);
@@ -74,9 +83,11 @@ export default function FollowUp({ birth, previous }: FollowUpProps) {
         <h4 className="text-base text-gold-400/85" style={SERIF}>
           还想再问
         </h4>
-        <span className="text-paper-100/35 text-xs">每次追问计入当日的免费次数</span>
+        <span className="text-paper-100/55 text-xs">
+          {unlocked ? "会员与通行证同样覆盖追问" : "追问为付费功能"}
+        </span>
       </div>
-      <p className="text-paper-100/40 text-xs leading-relaxed mb-4">
+      <p className="text-paper-100/55 text-xs leading-relaxed mb-4">
         针对这份盘继续问。回答会带上盘面依据，方便你对着盘核验。
       </p>
 
@@ -98,29 +109,36 @@ export default function FollowUp({ birth, previous }: FollowUpProps) {
                 <p className="text-vermillion-400 text-xs">{item.error}</p>
               )}
               {item.a === undefined && !item.error && (
-                <p className="text-paper-100/35 text-xs">正在推演…</p>
+                <p className="text-paper-100/55 text-xs">正在推演…</p>
               )}
             </div>
           ))}
         </div>
       )}
 
-      <form onSubmit={submit} className="flex flex-col sm:flex-row gap-3">
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          maxLength={300}
-          placeholder="例如：我这十年该往哪个方向使劲？"
-          className="flex-1 bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 placeholder:text-paper-100/25 focus:border-gold-300/50 focus:outline-none transition-colors text-sm"
-        />
-        <button
-          type="submit"
-          disabled={busy || question.trim().length < 2}
-          className="btn-mystic !py-3 disabled:opacity-40 shrink-0"
-        >
-          {busy ? "推演中…" : "问"}
+      {!unlocked ? (
+        <button onClick={onNeedUnlock} className="btn-mystic w-full !py-3 text-sm">
+          追问需先激活 · 点此输入激活码
         </button>
-      </form>
+      ) : (
+        <form onSubmit={submit} className="flex flex-col sm:flex-row gap-3">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            maxLength={300}
+            aria-label="追问内容"
+            placeholder="例如：我这十年该往哪个方向使劲？"
+            className="flex-1 bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 placeholder:text-paper-100/45 focus:border-gold-300/50 focus:outline-none transition-colors text-sm"
+          />
+          <button
+            type="submit"
+            disabled={busy || question.trim().length < 2}
+            className="btn-mystic !py-3 disabled:opacity-40 shrink-0"
+          >
+            {busy ? "推演中…" : "问"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

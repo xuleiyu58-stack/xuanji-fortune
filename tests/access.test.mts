@@ -109,7 +109,36 @@ test("过期的会员不算会员", () => {
 test("单次券放行并要求消耗一次", () => {
   const d = decideAccess("tarot", { device: 99, ip: 99, global: 5 }, LIMITS, TAROT_PASS, false, NOW);
   assert.equal(d.allow, true);
-  if (d.allow) assert.deepEqual(d.consume, { mode: "tarot" });
+  // 带下标与消费前次数：台账要区分"哪张券的第几次使用"。
+  // 只给模式名不够（同模式可能多张），只给下标也不够（一张可能多次）。
+  if (d.allow) assert.deepEqual(d.consume, { mode: "tarot", passIndex: 0, remaining: 1 });
+});
+
+test("券的下标指向真正被选中的那一张", () => {
+  // 第一张不匹配、第二张匹配时，下标必须是 1 —— 否则台账会记错券
+  const ent: AccessEntitlement = {
+    member: null,
+    passes: [
+      { m: "bazi", n: 1, e: NOW + 7 * DAY },
+      { m: "tarot", n: 1, e: NOW + 7 * DAY },
+    ],
+  };
+  const d = decideAccess("tarot", { device: 0, ip: 0, global: 0 }, LIMITS, ent, false, NOW);
+  assert.equal(d.allow, true);
+  if (d.allow && typeof d.consume === "object") assert.equal(d.consume.passIndex, 1);
+});
+
+test("多次券带出消费前的次数 —— 台账靠它区分第几次使用", () => {
+  const ent: AccessEntitlement = {
+    member: null,
+    passes: [{ m: "bazi", n: 3, e: NOW + 7 * DAY }],
+  };
+  const d = decideAccess("bazi", { device: 0, ip: 0, global: 0 }, LIMITS, ent, false, NOW);
+  assert.equal(d.allow, true);
+  if (d.allow && typeof d.consume === "object") {
+    assert.equal(d.consume.remaining, 3, "应带出消费前的次数");
+    assert.equal(d.consume.passIndex, 0);
+  }
 });
 
 test("单次券不影响其它模式", () => {
@@ -146,4 +175,51 @@ test("全局熔断对会员同样生效", () => {
     assert.equal(d.reason, "global");
     assert.equal(d.status, 503);
   }
+});
+
+// ── 免费体验额度（trialPerDay）──────────────────────────────
+
+test("trialPerDay 默认为 0：付费模式必须先激活", () => {
+  // 不传第七个参数时行为不变 —— 默认值本身是安全的那一侧
+  const d = decideAccess("bazi", { device: 0, ip: 0, global: 0 }, LIMITS, NONE, false, NOW);
+  assert.equal(d.allow, false);
+});
+
+test("trialPerDay 为正数时，付费模式在额度内可以先试后买", () => {
+  const d = decideAccess("bazi", { device: 0, ip: 0, global: 0 }, LIMITS, NONE, false, NOW, 3);
+  assert.equal(d.allow, true);
+  if (d.allow) {
+    assert.equal(d.consume, "quota", "体验走的是额度，不是权限");
+    assert.equal(d.via, "trial", "必须是 trial —— 界面据此提示还剩几次免费");
+  }
+});
+
+test("体验额度用尽后转为 403，而不是 429", () => {
+  // 性质变了：不再是"今天问得太多"，而是"该付费了"。文案与状态码都该跟着变。
+  const d = decideAccess("bazi", { device: 3, ip: 3, global: 10 }, LIMITS, NONE, false, NOW, 3);
+  assert.equal(d.allow, false);
+  if (!d.allow) {
+    assert.equal(d.status, 403);
+    assert.equal(d.reason, "paid");
+  }
+});
+
+test("体验额度内 IP 超限仍然拦得住", () => {
+  // 清 cookie 能重置设备维度，IP 维度是它的兜底
+  const d = decideAccess("bazi", { device: 0, ip: 6, global: 10 }, LIMITS, NONE, false, NOW, 3);
+  assert.equal(d.allow, false);
+  if (!d.allow) {
+    assert.equal(d.status, 429);
+    assert.equal(d.reason, "ip");
+  }
+});
+
+test("有凭证时 via 为 paid，不吃体验额度", () => {
+  const member = decideAccess("bazi", { device: 99, ip: 99, global: 5 }, LIMITS, MEMBER, false, NOW, 3);
+  assert.equal(member.allow, true);
+  if (member.allow) assert.equal(member.via, "paid");
+
+  const pass = decideAccess("tarot", { device: 99, ip: 99, global: 5 }, LIMITS, TAROT_PASS, false, NOW, 3);
+  assert.equal(pass.allow, true);
+  if (pass.allow) assert.equal(pass.via, "paid");
 });

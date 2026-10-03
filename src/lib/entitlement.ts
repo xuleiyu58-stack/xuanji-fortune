@@ -5,7 +5,7 @@
  * 权益就在这张凭证里。密钥由调用方注入（从环境变量读是 server 层的事），
  * 本模块只 import 内置的 node:crypto，因此能被 node --test 直接跑。
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 
 export const ENTITLEMENT_VERSION = 1;
 
@@ -20,6 +20,18 @@ export interface Pass {
 
 export interface Entitlement {
   v: 1;
+  /**
+   * 本次签发凭证的唯一编号。**每次签发都是新的。**
+   *
+   * 用途是给服务端的单次券台账当钥匙：台账记的是「这张凭证的第 i 张券
+   * 已经用掉了」。有了它，即便有人把整张 cookie 抄走再原样送回来，
+   * 服务端也能认出"这次消费已经发生过"，而不是照给。
+   *
+   * 为什么台账按 `tid:序号` 而不是只按序号：凭证每重新签发一次就是一个新的
+   * 凭证对象，凭它拿到的额度也确实是新的一份。用同一个编号会让重新签发
+   * 之后的券无法消费。
+   */
+  tid?: string;
   /** 会员到期 unix 秒；非会员为 null */
   member: number | null;
   passes: Pass[];
@@ -43,8 +55,19 @@ function macOf(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload).digest("base64url");
 }
 
+/** 新凭证编号。12 字节 base64url ≈ 96 bit，碰撞可以忽略。 */
+function newTokenId(): string {
+  return randomBytes(12).toString("base64url");
+}
+
+/**
+ * 签发。**每次调用都会分配一个新的 tid**，这是刻意的：
+ * 凭证的每一次重新签发都是一份新的授权对象，服务端的消费台账也随之另起一份。
+ * 沿用旧 tid 会让"兑换后回写"的那张新凭证带着已被用掉的记录。
+ */
 export function sign(ent: Entitlement, secret: string): string {
-  const payload = encodePayload(ent);
+  const withId: Entitlement = { ...ent, tid: ent.tid ?? newTokenId() };
+  const payload = encodePayload(withId);
   return `${payload}.${macOf(payload, secret)}`;
 }
 
@@ -60,7 +83,9 @@ export function prune(ent: Entitlement, nowSec: number): Entitlement | null {
   const member = ent.member !== null && ent.member > nowSec ? ent.member : null;
   const passes = ent.passes.filter((p) => p.n > 0 && p.e > nowSec);
   if (member === null && passes.length === 0) return null;
-  return { v: ENTITLEMENT_VERSION, member, passes };
+  const pruned: Entitlement = { v: ENTITLEMENT_VERSION, member, passes };
+  if (ent.tid) pruned.tid = ent.tid;
+  return pruned;
 }
 
 function parseEntitlement(raw: unknown, nowSec: number): Entitlement | null {
@@ -83,7 +108,9 @@ function parseEntitlement(raw: unknown, nowSec: number): Entitlement | null {
     }
   }
 
-  return prune({ v: ENTITLEMENT_VERSION, member, passes }, nowSec);
+  const parsed = prune({ v: ENTITLEMENT_VERSION, member, passes }, nowSec);
+  if (parsed && typeof o.tid === "string" && o.tid.length > 0) parsed.tid = o.tid;
+  return parsed;
 }
 
 export function verify(
@@ -137,14 +164,21 @@ export function grantPass(
   return { v: ENTITLEMENT_VERSION, member: ent.member, passes };
 }
 
-/** 用掉一次该模式的券。返回 null 表示整份凭证已空，调用方应清除 cookie。 */
+/**
+ * 用掉**指定下标**的那张券。返回 null 表示整份凭证已空，调用方应清除 cookie。
+ *
+ * 按下标而不是按模式：同一个模式可能有好几张券，而服务端的消费台账
+ * （见 supabase/accounts.sql 的 pass_consumptions）是按 `tid:下标` 记账的。
+ * 按模式扣会让"台账记的是第 2 张、cookie 扣的是第 1 张"这种错位发生。
+ */
 export function consumePass(
   ent: Entitlement,
-  mode: string,
+  passIndex: number,
   nowSec: number
 ): Entitlement | null {
+  if (passIndex < 0 || passIndex >= ent.passes.length) return prune(ent, nowSec);
   const passes = ent.passes
-    .map((p) => (p.m === mode ? { ...p, n: p.n - 1 } : p))
+    .map((p, i) => (i === passIndex ? { ...p, n: p.n - 1 } : p))
     .filter((p) => p.n > 0 && p.e > nowSec);
   return prune({ ...ent, passes }, nowSec);
 }

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { parseReading, hasBasis, type ReadingSection } from "@/lib/reading";
 import { inlineHtml, renderFortuneHtml } from "@/lib/sanitize";
+import { DISCLAIMER } from "@/lib/disclaimer";
 
 /**
  * 解读面板。
@@ -65,6 +66,15 @@ function SectionCard({ section }: { section: ReadingSection }) {
 export default function ReadingPanel({ content }: { content: string }) {
   const parsed = useMemo(() => parseReading(content), [content]);
 
+  // 免责声明由 parseReading 从正文里剥掉（它不该混进任何一节的「依据」），
+  // 但剥掉之后必须在这里补回来 —— 否则合规文案就凭空消失了。
+  // 用代码里的常量而不是模型写的那一句：模型漏写、改写都不该影响它出现。
+  const disclaimer = (
+    <p className="text-paper-100/60 text-xs leading-relaxed border-l-2 border-gold-300/25 pl-3">
+      {DISCLAIMER}
+    </p>
+  );
+
   // 解析不出小节时退回整块渲染 —— 模型没按格式走，也不能让人看不到解读
   if (parsed.sections.length === 0) {
     return (
@@ -74,6 +84,7 @@ export default function ReadingPanel({ content }: { content: string }) {
           className="fortune-text text-paper-100/80 text-sm leading-loose"
           dangerouslySetInnerHTML={{ __html: renderFortuneHtml(parsed.fallback ?? content) }}
         />
+        <div className="mt-6">{disclaimer}</div>
       </div>
     );
   }
@@ -84,7 +95,7 @@ export default function ReadingPanel({ content }: { content: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-lg text-gold" style={SERIF}>大师解读</h3>
-        <p className="text-paper-100/35 text-xs">
+        <p className="text-paper-100/55 text-xs">
           共 {parsed.sections.length} 节
           {withBasis > 0 && `，其中 ${withBasis} 节给出了盘面依据`}
         </p>
@@ -92,6 +103,7 @@ export default function ReadingPanel({ content }: { content: string }) {
       {parsed.sections.map((s) => (
         <SectionCard key={s.title} section={s} />
       ))}
+      {disclaimer}
     </div>
   );
 }

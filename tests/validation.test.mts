@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateFortuneRequest, MAX_SHORT_FIELD, MAX_LONG_FIELD } from "../src/lib/validation.ts";
+import {
+  validateFortuneRequest,
+  validateReadingPayload,
+  MAX_SHORT_FIELD,
+  MAX_LONG_FIELD,
+  MAX_READING_RESULT,
+} from "../src/lib/validation.ts";
 
 const ALLOWED = ["bazi"];
 
@@ -68,4 +74,74 @@ test("文本域上限比短字段宽", () => {
     ALLOWED
   );
   assert.equal(bad.ok, false);
+});
+
+// ── 上云记录的校验 ─────────────────────────────────────────
+
+const READING = { mode: "bazi", title: "八字命理", result: "【命局总评】…", input: { calendar: "solar" } };
+
+test("合法的上云记录通过", () => {
+  const r = validateReadingPayload(READING);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.mode, "bazi");
+    assert.equal(r.value.title, "八字命理");
+  }
+});
+
+test("非对象一律拒绝", () => {
+  for (const bad of [null, undefined, "x", 42, []]) {
+    assert.equal(validateReadingPayload(bad).ok, false, `${JSON.stringify(bad)} 不该通过`);
+  }
+});
+
+test("缺 mode / title / result 时拒绝", () => {
+  assert.equal(validateReadingPayload({ ...READING, mode: "" }).ok, false);
+  assert.equal(validateReadingPayload({ ...READING, title: "  " }).ok, false);
+  assert.equal(validateReadingPayload({ ...READING, result: "" }).ok, false);
+  assert.equal(validateReadingPayload({ ...READING, result: "   \n " }).ok, false, "纯空白不算内容");
+});
+
+test("过长的正文被拒绝 —— 没有上限就能被灌任意大的文本", () => {
+  const ok = validateReadingPayload({ ...READING, result: "x".repeat(MAX_READING_RESULT) });
+  assert.equal(ok.ok, true, "正好到上限应通过");
+
+  const bad = validateReadingPayload({ ...READING, result: "x".repeat(MAX_READING_RESULT + 1) });
+  assert.equal(bad.ok, false);
+});
+
+test("input 只保留字符串值，且逐项限长", () => {
+  const r = validateReadingPayload({
+    ...READING,
+    input: {
+      calendar: "solar",
+      nested: { evil: true },       // 非字符串，丢弃
+      big: "x".repeat(MAX_LONG_FIELD + 1), // 过长，丢弃
+      ["k".repeat(41)]: "v",        // 键名过长，丢弃
+    },
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.deepEqual(Object.keys(r.value.input), ["calendar"]);
+  }
+});
+
+test("input 不是对象时退化成空对象，而不是报错", () => {
+  // 历史记录可能来自没有 input 的旧版本，不该因此判为非法
+  for (const bad of [null, "x", 42, []]) {
+    const r = validateReadingPayload({ ...READING, input: bad });
+    assert.equal(r.ok, true, `input=${JSON.stringify(bad)} 应仍可保存`);
+    if (r.ok) assert.deepEqual(r.value.input, {});
+  }
+});
+
+test("不套用 MODE_FIELDS 白名单 —— 老记录不该被今天的字段集合判为非法", () => {
+  // 排盘请求的 input 会进 prompt，所以要白名单；
+  // 记录的 input 只是存档，用白名单卡会把历史记录全部判非法。
+  const r = validateReadingPayload({
+    ...READING,
+    input: { province: "北京市", city: "北京市", question: "事业", lunarLeap: "false" },
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(Object.keys(r.value.input).length, 4);
 });

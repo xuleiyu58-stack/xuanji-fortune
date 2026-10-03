@@ -28,7 +28,7 @@ import { analyzeStrength, type StrengthResult } from "./strength.ts";
 import { analyzePattern, type PatternResult } from "./pattern.ts";
 import { findShenSha, type ShenShaHit } from "./shensha.ts";
 import { formatClock, standardTimeFor, toTrueSolarTime } from "./solar-time.ts";
-import { isApproximate, longitudeOf, longitudeOfCity } from "./places.ts";
+import { isApproximate, longitudeOf, longitudeOfCity, regions } from "./places.ts";
 
 export type { WuXing, ShiShen, ChangSheng, Zhi } from "./constants.ts";
 export { SHI_SHEN_MEANING } from "./relations.ts";
@@ -45,6 +45,36 @@ export {
 export { describeOffset } from "./solar-time.ts";
 
 const ELEMENT_ORDER: readonly WuXing[] = ["金", "木", "水", "火", "土"];
+
+/**
+ * 把用户填的省市还原成区划表里的**规范名称**。
+ *
+ * 为什么不直接用原值拼接：`birthPlace` 会经 chartToPrompt 进入喂给模型的
+ * 「已由程序精确排定」那一段。用原值等于把用户可控的任意文本（最长 200 字）
+ * 塞进模型最信任的区域 —— 而省名并不参与经度计算（经度只认市名），
+ * 所以「省名填一段指令 + 市名填一个真实城市」是能走通的注入路径。
+ *
+ * 只有能在表里找到的省/市才写进去；找不到的（老数据、简称、写错的字）留空，
+ * 宁可少一行说明，也不把未经验证的文本当命盘数据。
+ */
+function canonicalPlaceName(
+  province: string | undefined,
+  city: string | undefined
+): string | undefined {
+  const provinceInput = province?.trim();
+  const cityInput = city?.trim();
+
+  // 一次遍历同时定位省与市：只认表中真实存在的名字，原值一律不回填
+  for (const p of regions) {
+    if (provinceInput && p.n !== provinceInput) continue;
+    const hit = cityInput ? p.c.find((c) => c.n === cityInput) : undefined;
+    if (hit) return `${p.n} ${hit.n}`;
+  }
+
+  // 市名精确匹配不上时不动它 —— 这一步只做净化，不做猜测。
+  // 经度解析另有更宽松的兜底（见 longitudeOf），那条路不影响这里。
+  return undefined;
+}
 
 const GAN_ELEMENT: Record<string, WuXing> = {
   甲: "木", 乙: "木", 丙: "火", 丁: "火", 戊: "土",
@@ -499,7 +529,7 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     solarOffsetMinutes,
     birthPlace:
       longitude !== undefined
-        ? [input.province, input.city].filter(Boolean).join(" ")
+        ? canonicalPlaceName(input.province, input.city)
         : undefined,
     birthPlaceApproximate: longitude !== undefined ? isApproximate(input.city) : undefined,
     standardTimeZone: usedZoneName,

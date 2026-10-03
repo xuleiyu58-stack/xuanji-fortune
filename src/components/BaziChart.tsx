@@ -36,7 +36,7 @@ const SERIF = { fontFamily: "'Noto Serif SC', serif" } as const;
 
 /** 术语后面紧跟的一句人话。刻意做成行内可见，不做 tooltip。 */
 function Hint({ children }: { children: React.ReactNode }) {
-  return <span className="text-paper-100/40 text-xs leading-relaxed">{children}</span>;
+  return <span className="text-paper-100/55 text-xs leading-relaxed">{children}</span>;
 }
 
 function Section({
@@ -52,8 +52,8 @@ function Section({
 }) {
   return (
     <section className={`mb-8 last:mb-0 ${className}`}>
-      <h4 className="text-xs tracking-[0.2em] text-paper-100/45 mb-1">{title}</h4>
-      {hint && <p className="text-paper-100/35 text-xs mb-4 leading-relaxed">{hint}</p>}
+      <h4 className="text-xs tracking-[0.2em] text-paper-100/55 mb-1">{title}</h4>
+      {hint && <p className="text-paper-100/55 text-xs mb-4 leading-relaxed">{hint}</p>}
       {!hint && <div className="mb-4" />}
       {children}
     </section>
@@ -86,7 +86,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
     <section className="mystic-card rounded-xl p-6 sm:p-8" aria-label="八字命盘">
       <header className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
         <h3 className="text-lg text-gold" style={SERIF}>命盘</h3>
-        <p className="text-paper-100/45 text-xs tracking-wider">
+        <p className="text-paper-100/55 text-xs tracking-wider">
           {chart.solarDate} · 农历{chart.lunarDate} · 属{chart.zodiac}
         </p>
       </header>
@@ -94,23 +94,23 @@ export default function BaziChart({ chart }: { chart: Chart }) {
       {/* 时间是怎么定的，必须摆明 —— 时柱错了整张盘就错了，用户有权知道我们用了哪个时刻 */}
       <div className="rounded-lg border border-gold-300/12 bg-mystic-800/40 px-4 py-3 mb-8">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <span className="text-paper-100/45">出生时间</span>
+          <span className="text-paper-100/55">出生时间</span>
           <span className="text-paper-100/80 tabular-nums">{chart.clockTime}</span>
-          <span className="text-paper-100/35">
+          <span className="text-paper-100/55">
             （{chart.calendar === "lunar" ? "农历输入，已换算为公历" : "阳历"}）
           </span>
           {chart.trueSolarTime ? (
             <>
-              <span className="text-paper-100/30">→</span>
+              <span className="text-paper-100/55">→</span>
               <span className="text-gold-300 tabular-nums">真太阳时 {chart.trueSolarTime}</span>
-              <span className="text-paper-100/45">
+              <span className="text-paper-100/55">
                 按{chart.birthPlace}的经度换算，差 {chart.solarOffsetMinutes} 分钟
                 {chart.birthPlaceApproximate && "（该地经度为省内估值）"}
                 {chart.standardTimeZone && `（${chart.standardTimeZone}，1949 年前中国分五个时区）`}
               </span>
             </>
           ) : (
-            <span className="text-paper-100/35">· 未填出生地，按钟表时间排</span>
+            <span className="text-paper-100/55">· 未填出生地，按钟表时间排</span>
           )}
         </div>
         {chart.trueSolarCrossedDay && (
@@ -130,11 +130,11 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             {chart.dayMaster}
           </span>
           <El element={chart.dayMasterElement}>{chart.dayMasterElement}</El>
-          <span className="mx-1.5 text-paper-100/25">·</span>
+          <span className="mx-1.5 text-paper-100/55">·</span>
           <span className="text-gold-300">{strength.verdict}</span>
           {pattern && (
             <>
-              <span className="mx-1.5 text-paper-100/25">·</span>
+              <span className="mx-1.5 text-paper-100/55">·</span>
               <span className="text-gold-300">{pattern.name}</span>
             </>
           )}
@@ -147,14 +147,14 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             <span className="text-paper-100/50">
               帮身 <span className="text-gold-300 tabular-nums">{helpPct}%</span>
             </span>
-            <span className="text-paper-100/40">
+            <span className="text-paper-100/55">
               耗身 <span className="tabular-nums">{100 - helpPct}%</span>
             </span>
           </div>
           <div className="h-2 rounded-full bg-paper-100/[0.08] overflow-hidden flex">
             <div className="h-full bg-gold-400/70" style={{ width: `${helpPct}%` }} />
           </div>
-          <p className="text-paper-100/35 text-xs mt-2 leading-relaxed">
+          <p className="text-paper-100/55 text-xs mt-2 leading-relaxed">
             帮身＝生我（印）与同我（比劫）之力；耗身＝我生（食伤）、我克（财）、克我（官杀）之力。
             月令的分量按两倍计 —— 出生那个月是全局气机最重的地方。
           </p>
@@ -173,14 +173,14 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             { label: "忌神", element: strength.jiShen, note: "克用神者，宜避" },
           ].map((item) => (
             <div key={item.label} className="rounded-lg border border-gold-300/12 bg-mystic-800/40 px-3 py-4 text-center">
-              <div className="text-[11px] tracking-[0.2em] text-paper-100/45 mb-3">{item.label}</div>
+              <div className="text-[11px] tracking-[0.2em] text-paper-100/55 mb-3">{item.label}</div>
               <El element={item.element} size="1.75rem">{item.element}</El>
-              <div className="text-paper-100/35 text-[11px] mt-3 leading-snug">{item.note}</div>
+              <div className="text-paper-100/55 text-[11px] mt-3 leading-snug">{item.note}</div>
             </div>
           ))}
         </div>
         {/* 取用神是八字里分歧最大的一步，口径必须摆明，不能让人以为是定论 */}
-        <p className="text-paper-100/35 text-xs mt-4 leading-relaxed">{YONG_SHEN_METHOD}</p>
+        <p className="text-paper-100/55 text-xs mt-4 leading-relaxed">{YONG_SHEN_METHOD}</p>
       </Section>
 
       {/* ── 十神力量 ───────────────────────────────────── */}
@@ -200,13 +200,13 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                   style={{ width: `${Math.max(g.percent, 2)}%` }}
                 />
               </div>
-              <span className="w-10 text-right text-xs text-paper-100/45 tabular-nums shrink-0">
+              <span className="w-10 text-right text-xs text-paper-100/55 tabular-nums shrink-0">
                 {g.percent}%
               </span>
             </div>
           ))}
         </div>
-        <p className="text-paper-100/35 text-xs mt-4 leading-relaxed">
+        <p className="text-paper-100/55 text-xs mt-4 leading-relaxed">
           计算方法与上面的强弱判定同源：天干计 0.8，地支藏干按本气 1 / 中气 0.5 / 余气 0.25，月支整体乘 2。
         </p>
       </Section>
@@ -224,10 +224,10 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 p.isDayMaster ? "border-gold-500/45 bg-gold-500/[0.07]" : "border-gold-300/10 bg-mystic-800/40"
               }`}
             >
-              <div className="text-[11px] tracking-[0.2em] text-paper-100/40">{p.label}</div>
+              <div className="text-[11px] tracking-[0.2em] text-paper-100/55">{p.label}</div>
               {/* 宫位：同一柱既是一段时间，也是一个亲属/关系的位置。
                   十神说「什么力量」，宫位说「这股力量落在谁身上、哪一段人生」。 */}
-              <div className="text-[10px] text-paper-100/30 mb-3">
+              <div className="text-[10px] text-paper-100/55 mb-3">
                 {PALACE_MEANING[p.label]?.title ?? ""}
               </div>
               {/* 十神紧贴天干**上方** —— 它描述的就是这个天干字。
@@ -243,26 +243,26 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               {/* 藏干与支中十神 —— 地支才是根，只看天干看不全。
                   支中十神写在各自的藏干旁边，而不是单列一行，免得又跟天干混起来。 */}
               <div className="mt-3 pt-3 border-t border-gold-300/10">
-                <div className="text-[10px] text-paper-100/30 mb-1.5">藏干</div>
+                <div className="text-[10px] text-paper-100/55 mb-1.5">藏干</div>
                 <div className="space-y-1">
                   {p.hidden.map((h) => (
                     <div key={h.gan} className="text-[11px] leading-tight">
                       <El element={h.element}>{h.gan}</El>
-                      <span className="text-paper-100/35 ml-1">{h.shiShen}</span>
+                      <span className="text-paper-100/55 ml-1">{h.shiShen}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="mt-3 pt-2 border-t border-gold-300/10 space-y-1">
-                <div className="text-[10px] text-paper-100/30">{p.naYin}</div>
-                <div className="text-[10px] text-paper-100/35">{p.diShi ?? "—"}</div>
-                {p.xunKong && <div className="text-[10px] text-paper-100/25">空亡 {p.xunKong}</div>}
+                <div className="text-[10px] text-paper-100/55">{p.naYin}</div>
+                <div className="text-[10px] text-paper-100/55">{p.diShi ?? "—"}</div>
+                {p.xunKong && <div className="text-[10px] text-paper-100/55">空亡 {p.xunKong}</div>}
               </div>
             </div>
           ))}
         </div>
-        <p className="text-paper-100/35 text-xs mt-3 leading-relaxed">
+        <p className="text-paper-100/55 text-xs mt-3 leading-relaxed">
           藏干＝地支里藏着的天干，往往是一个人的根底；旁边那行十神是藏干对日主的关系。
           十二长生（长生／沐浴／临官／帝旺…）说明这一柱对日主是助力还是消耗，临官与帝旺最有力。
           柱名下面那行是<b className="text-paper-100/50 font-normal">宫位</b>——
@@ -292,7 +292,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                   style={{ width: `${e.percent}%`, background: ELEMENT_COLOR[e.element] }}
                 />
               </div>
-              <span className="w-20 text-right text-xs text-paper-100/45 tabular-nums shrink-0">
+              <span className="w-20 text-right text-xs text-paper-100/55 tabular-nums shrink-0">
                 {e.value} · {e.percent}%
               </span>
             </div>
@@ -334,7 +334,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 </span>
                 <div className="min-w-0">
                   <span className="text-paper-100/75 text-sm">{s.name}</span>
-                  <span className="text-paper-100/35 text-xs ml-2">{s.position}{s.hitOn}</span>
+                  <span className="text-paper-100/55 text-xs ml-2">{s.position}{s.hitOn}</span>
                   <p className="text-paper-100/50 text-xs leading-relaxed mt-1">{s.plain}</p>
                 </div>
               </div>
@@ -401,7 +401,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             { label: "身宫", value: chart.shenGong },
           ].map((x) => (
             <div key={x.label} className="rounded-lg border border-gold-300/12 bg-mystic-800/40 py-3">
-              <div className="text-[11px] tracking-[0.2em] text-paper-100/45 mb-2">{x.label}</div>
+              <div className="text-[11px] tracking-[0.2em] text-paper-100/55 mb-2">{x.label}</div>
               <div className="text-lg text-paper-100/80" style={SERIF}>{x.value}</div>
             </div>
           ))}
@@ -432,8 +432,8 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 <div className={`text-base ${isCurrent ? "text-gold-300" : "text-paper-100/65"}`} style={SERIF}>
                   {step.ganZhi}
                 </div>
-                <div className="text-[10px] text-paper-100/35 mt-1 tabular-nums">{step.startAge} 岁</div>
-                <div className="text-[10px] text-paper-100/25 tabular-nums">{step.startYear}</div>
+                <div className="text-[10px] text-paper-100/55 mt-1 tabular-nums">{step.startAge} 岁</div>
+                <div className="text-[10px] text-paper-100/55 tabular-nums">{step.startYear}</div>
               </button>
             );
           })}
@@ -444,11 +444,11 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             <div className="flex items-baseline justify-between mb-3">
               <span className="text-paper-100/70 text-sm">
                 {chart.daYun[openDaYun].startYear}–{chart.daYun[openDaYun].endYear}
-                <span className="text-paper-100/35 ml-2 text-xs">
+                <span className="text-paper-100/55 ml-2 text-xs">
                   {chart.daYun[openDaYun].startAge} 岁起
                 </span>
               </span>
-              <span className="text-paper-100/35 text-xs">流年</span>
+              <span className="text-paper-100/55 text-xs">流年</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {chart.daYun[openDaYun].liuNian.map((n) => {
@@ -463,8 +463,8 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                     <div className={`text-sm ${isThisYear ? "text-gold-300" : "text-paper-100/70"}`} style={SERIF}>
                       {n.ganZhi}
                     </div>
-                    <div className="text-[10px] text-paper-100/35 tabular-nums mt-0.5">{n.year}</div>
-                    <div className="text-[10px] text-paper-100/25 tabular-nums">{n.age} 岁</div>
+                    <div className="text-[10px] text-paper-100/55 tabular-nums mt-0.5">{n.year}</div>
+                    <div className="text-[10px] text-paper-100/55 tabular-nums">{n.age} 岁</div>
                   </div>
                 );
               })}
@@ -476,12 +476,12 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               if (!thisYear?.liuYue?.length) return null;
               return (
                 <div className="mt-4 pt-4 border-t border-gold-300/10">
-                  <div className="text-paper-100/35 text-xs mb-2">{nowYear} 年的十二流月</div>
+                  <div className="text-paper-100/55 text-xs mb-2">{nowYear} 年的十二流月</div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
                     {thisYear.liuYue.map((m) => (
                       <div key={m.month} className="rounded border border-gold-300/10 px-1.5 py-1.5 text-center">
                         <div className="text-[11px] text-paper-100/65" style={SERIF}>{m.ganZhi}</div>
-                        <div className="text-[10px] text-paper-100/30">{m.month}</div>
+                        <div className="text-[10px] text-paper-100/55">{m.month}</div>
                       </div>
                     ))}
                   </div>
@@ -492,9 +492,9 @@ export default function BaziChart({ chart }: { chart: Chart }) {
             {/* 小运：与流年并列的十年。流年看外象，小运看内因，两者合看更细 */}
             {chart.daYun[openDaYun].xiaoYun.length > 0 && (
               <div className="mt-4 pt-4 border-t border-gold-300/10">
-                <div className="text-paper-100/35 text-xs mb-2">
+                <div className="text-paper-100/55 text-xs mb-2">
                   小运
-                  <span className="text-paper-100/25 ml-2">
+                  <span className="text-paper-100/55 ml-2">
                     与流年并行的另一条线，看内在的起心动念
                   </span>
                 </div>
@@ -502,7 +502,7 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                   {chart.daYun[openDaYun].xiaoYun.map((x) => (
                     <div key={x.year} className="rounded border border-gold-300/10 px-2 py-1.5 text-center">
                       <div className="text-[13px] text-paper-100/65" style={SERIF}>{x.ganZhi}</div>
-                      <div className="text-[10px] text-paper-100/30 tabular-nums">{x.age} 岁</div>
+                      <div className="text-[10px] text-paper-100/55 tabular-nums">{x.age} 岁</div>
                     </div>
                   ))}
                 </div>

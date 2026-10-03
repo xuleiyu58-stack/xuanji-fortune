@@ -40,6 +40,26 @@ test("准入判定发生在调用 AI 之前", () => {
   assert.ok(iGuard < iAi, "必须先判额度再调用 AI，否则限流拦不住任何请求");
 });
 
+test("准入判定必须带上 mode —— 付费与免费模式的规则不同", () => {
+  // 曾经的洞：guard 不看 mode，于是「客户端看着要付款，服务端却照给」。
+  // 这条断言钉住的是"mode 必须传进闸门"这件事本身。
+  assert.match(src, /await quotaGuard\(req,\s*[^)]+\)/, "fortune 必须把 mode 传进 quotaGuard");
+  assert.match(askSrc, /await quotaGuard\(req,\s*"bazi"\)/, "追问固定走 bazi 模式");});
+
+test("付费模式不再吃免费额度", () => {
+  assert.match(guardSrc, /isFreeMode\(mode\)/, "guard 必须按 mode 区分额度档位");
+  assert.match(guardSrc, /decideAccess\(/, "判定应交给 access.ts 的 decideAccess");
+  assert.doesNotMatch(guardSrc, /decideQuota/, "decideQuota 已被 decideAccess 取代");
+});
+
+test("必须验签权益凭证", () => {
+  // 取权益的动作已收敛到 pass-cookie 的 ensurePassCookie：
+  // 有 cookie 就直接验签返回，没有才回退查账户（账号体系那一层）。
+  // guard 不该自己去读 cookie 或账户表 —— 读取点只能有一处。
+  assert.match(guardSrc, /ensurePassCookie\(req\)/, "guard 必须通过 ensurePassCookie 取凭证");
+  assert.match(guardSrc, /entitlement,/, "凭证必须参与放行判定");
+});
+
 test("只在 AI 成功之后才记账", () => {
   const iAi = src.indexOf("await readBazi(");
   const iBump = src.indexOf("await bumpUsage(");
@@ -52,15 +72,19 @@ test("只在 AI 成功之后才记账", () => {
 
 // ── 准入判定（两个入口共用）─────────────────────────────
 
-test("额度判定的三维度与状态码都在 guard 里", () => {
-  assert.match(guardSrc, /decideQuota\(counts/, "仍未调用 decideQuota");
-  assert.match(guardSrc, /429/, "额度用尽应返回 429 Too Many Requests");
-  assert.match(guardSrc, /503/, "计数读不到时应返回 503 而不是放行");
+test("拒绝时使用判定给出的状态码，而不是写死 429", () => {
+  // 状态码的分配属于 access.ts 的职责（403 权限 / 429 频率 / 503 熔断）；
+  // guard 只负责把它翻译成 HTTP。写死一个码就等于把两种性质压成一种。
+  assert.match(guardSrc, /decision\.status/, "拒绝时应使用判定给出的状态码（403/429/503）");
+  assert.match(guardSrc, /decision\.message/, "错误文案应由判定给出");
+  assert.match(guardSrc, /decideAccess\(/, "状态码的来源是 decideAccess");
 });
 
 test("读不到用量时拒绝服务，不降级放行", () => {
-  const block = guardSrc.slice(guardSrc.indexOf("catch (err)"), guardSrc.indexOf("decideQuota(counts"));
+  const start = guardSrc.indexOf("catch (err)");
+  const block = guardSrc.slice(start, guardSrc.indexOf("decideAccess("));
   assert.match(block, /503/, "读用量失败必须拒绝，不能吞掉异常继续");
+  assert.match(block, /return/, "读用量失败必须立即返回");
 });
 
 test("签发 httpOnly 设备 cookie", () => {

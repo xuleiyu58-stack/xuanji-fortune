@@ -10,10 +10,23 @@ function client(): OpenAI {
     throw new Error("缺少 DEEPSEEK_API_KEY 环境变量");
   }
   if (!_client) {
-    _client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com/v1" });
+    _client = new OpenAI({
+      apiKey,
+      baseURL: "https://api.deepseek.com/v1",
+      // SDK 默认超时是 10 分钟、失败重试 2 次 —— 上游卡住时一次请求能挂 30 分钟，
+      // 而用户的浏览器早就放弃了。解读是交互式操作，等不起，宁可早点报错让他重试。
+      timeout: 60_000,
+      maxRetries: 1,
+    });
   }
   return _client;
 }
+
+/**
+ * 免责声明在 `lib/disclaimer.ts` 里 —— 客户端也要用，
+ * 留在这个模块会让 `openai` SDK 被打进浏览器包。
+ */
+export { DISCLAIMER } from "./disclaimer";
 
 const SYSTEM_PROMPT = `你是一位精通子平八字与五行生克的命理师。你的风格：以五行生克制化说理，旁征博引，不故弄玄虚。
 
@@ -117,7 +130,28 @@ export async function readBazi(userInput: Record<string, string>): Promise<BaziR
       max_tokens: 2200,
     });
 
-    return { success: true, content: response.choices[0].message.content ?? undefined, chart };
+    const choice = response.choices[0];
+    const content = choice?.message?.content?.trim();
+
+    // 空回复必须当成失败。此前返回 success:true + content:undefined，
+    // 前端 setResult(undefined) 之后什么都不显示、也不报错 ——
+    // 刚兑完码的用户看到的是一个静默复位的表单，比报错还费解。
+    if (!content) {
+      console.error("AI 返回空内容:", JSON.stringify(choice?.finish_reason));
+      return { success: false, error: "解读生成失败，请稍后重试", chart };
+    }
+
+    // 被 max_tokens 截断时明说：用户宁可知道"只出来一半"，
+    // 也不该把断在半句的解读当成完整的。
+    if (choice?.finish_reason === "length") {
+      return {
+        success: true,
+        content: `${content}\n\n（本篇解读因长度上限在此收束，若需展开可针对具体一节追问。）`,
+        chart,
+      };
+    }
+
+    return { success: true, content, chart };
   } catch (error) {
     console.error("AI API error:", error);
 
@@ -177,7 +211,15 @@ export async function askFollowUp(
       temperature: 0.8,
       max_tokens: 900,
     });
-    return { success: true, content: response.choices[0].message.content ?? undefined };
+
+    const choice = response.choices[0];
+    const content = choice?.message?.content?.trim();
+    // 与首次解读同口径：空回复是失败，不是"成功的空回答"
+    if (!content) {
+      console.error("AI 追问返回空内容:", JSON.stringify(choice?.finish_reason));
+      return { success: false, error: "回答生成失败，请稍后重试" };
+    }
+    return { success: true, content };
   } catch (error) {
     console.error("AI ask error:", error);
     const detail = error instanceof Error ? error.message : "";

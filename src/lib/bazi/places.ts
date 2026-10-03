@@ -21,6 +21,9 @@ import {
 export { REGIONS, APPROXIMATED, isApproximate, citiesIn, countiesIn, cityLongitude };
 export type { RegionCity, RegionProvince };
 
+/** 区划表的原始数组。给需要"先定位、再取规范名"的调用方（如 index.ts）。 */
+export const regions: readonly RegionProvince[] = REGIONS;
+
 export const PROVINCE_NAMES: readonly string[] = REGIONS.map((p) => p.n);
 
 /** 某省下辖的市。 */

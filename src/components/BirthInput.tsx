@@ -44,7 +44,7 @@ const SELECT_CLS =
   "w-full bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 focus:border-gold-300/50 focus:outline-none transition-colors";
 
 const LABEL_CLS = "block text-paper-100/60 text-sm mb-2 tracking-wider";
-const HINT_CLS = "text-paper-100/35 text-xs mt-2 leading-relaxed";
+const HINT_CLS = "text-paper-100/55 text-xs mt-2 leading-relaxed";
 
 export interface BirthInputProps {
   value: Record<string, string>;
@@ -143,10 +143,11 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
       {/* 出生日期 */}
       {calendar === "solar" ? (
         <div>
-          <label className={LABEL_CLS}>
+          <label className={LABEL_CLS} htmlFor="birth-date">
             出生日期<span className="text-vermillion-400 ml-1">*</span>
           </label>
           <input
+            id="birth-date"
             type="date"
             required
             value={value.birthDate || ""}
@@ -195,10 +196,11 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
 
       {/* 出生时刻 */}
       <div>
-        <label className={LABEL_CLS}>
+        <label className={LABEL_CLS} htmlFor="birth-time">
           出生时刻<span className="text-vermillion-400 ml-1">*</span>
         </label>
         <input
+          id="birth-time"
           type="time"
           required
           value={time}
@@ -264,7 +266,7 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
             : "填了才会做真太阳时校正。中国的钟表统一用 120°E 的时间，乌鲁木齐实际比它慢两个多小时。"}
         </p>
         {approximate && (
-          <p className="text-paper-100/35 text-xs mt-1.5 leading-relaxed">
+          <p className="text-paper-100/55 text-xs mt-1.5 leading-relaxed">
             该地的精确经度未收录，用的是所在省的中位数估值，误差约几分钟 —— 远小于一个时辰，不影响判柱。
           </p>
         )}
@@ -273,10 +275,11 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
       {/* 性别与关注方向 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
-          <label className={LABEL_CLS}>
+          <label className={LABEL_CLS} htmlFor="birth-gender">
             性别<span className="text-vermillion-400 ml-1">*</span>
           </label>
           <select
+            id="birth-gender"
             required
             value={value.gender || ""}
             onChange={(e) => onChange("gender", e.target.value)}

@@ -16,7 +16,34 @@ function member(daysFromNow: number): Entitlement {
 test("签发的凭证能被验回来", () => {
   const ent = member(30);
   const got = verify(sign(ent, SECRET), SECRET, NOW);
-  assert.deepEqual(got, ent);
+  // 签发会补上一个唯一编号，其余字段应原样还原
+  assert.ok(got, "验签不应失败");
+  assert.equal(got.member, ent.member);
+  assert.deepEqual(got.passes, ent.passes);
+  assert.match(got.tid ?? "", /^[A-Za-z0-9_-]{16}$/, "应带上 12 字节 base64url 的凭证编号");
+});
+
+test("每次签发的编号都不同 —— 台账靠它区分「哪一次授权」", () => {
+  const a = verify(sign(member(30), SECRET), SECRET, NOW);
+  const b = verify(sign(member(30), SECRET), SECRET, NOW);
+  assert.notEqual(a?.tid, b?.tid, "两次签发的 tid 不该相同");
+});
+
+test("同一份载荷重复签名会保留已有的编号", () => {
+  // 回写 cookie 时传的是已经带 tid 的对象，此时不该换编号 ——
+  // 换了的话，服务端台账里那张凭证的消费记录就对不上了
+  const ent: Entitlement = { ...member(30), tid: "fixedtokenid0001" };
+  const got = verify(sign(ent, SECRET), SECRET, NOW);
+  assert.equal(got?.tid, "fixedtokenid0001");
+});
+
+test("没有编号的凭证仍能验签（向后兼容旧 cookie）", () => {
+  // 旧版本签发的凭证没有 tid。判定层会拒绝用它消费单次券，
+  // 但验签本身不该失败 —— 会员权益仍应可用。
+  const old = sign({ v: 1, member: NOW + 30 * DAY, passes: [] }, SECRET);
+  const got = verify(old, SECRET, NOW);
+  assert.ok(got, "旧凭证应仍可验签");
+  assert.equal(got.member, NOW + 30 * DAY);
 });
 
 test("换一个密钥就验不过", () => {
@@ -96,13 +123,38 @@ test("兑换会员不会吞掉已有的单次券", () => {
 
 test("消耗到 0 的券被移除，全空时返回 null", () => {
   const one = grantPass(EMPTY_ENTITLEMENT, "tarot", 1, 7, NOW);
-  const after = consumePass(one, "tarot", NOW);
+  const after = consumePass(one, 0, NOW);
   assert.equal(after, null, "只剩一张券、用掉后整份凭证应消失，调用方据此清 cookie");
+});
+
+test("按下标消耗：只扣指定的那一张，不碰同模式的其它券", () => {
+  // 台账按 tid:下标 记账，所以必须能精确扣到某一张
+  const ent: Entitlement = {
+    v: 1,
+    member: null,
+    passes: [
+      { m: "bazi", n: 1, e: NOW + 7 * DAY },
+      { m: "bazi", n: 2, e: NOW + 7 * DAY },
+    ],
+  };
+  const after = consumePass(ent, 1, NOW);
+  assert.ok(after, "还有券，不该整份消失");
+  assert.equal(after.passes.length, 2, "第一张仍是 1 次，未被误扣");
+  assert.equal(after.passes[0].n, 1);
+  assert.equal(after.passes[1].n, 1, "被指定的第二张从 2 减到 1");
+});
+
+test("下标越界时不抛异常，也不能凭空多扣", () => {
+  const ent = grantPass(EMPTY_ENTITLEMENT, "bazi", 2, 7, NOW);
+  for (const bad of [-1, 5]) {
+    const after = consumePass(ent, bad, NOW);
+    assert.equal(after?.passes[0].n, 2, `下标 ${bad} 不该扣掉任何一次`);
+  }
 });
 
 test("消耗会员不产生变化（会员不走消耗路径）", () => {
   const m = member(30);
-  assert.deepEqual(consumePass(m, "tarot", NOW), m);
+  assert.deepEqual(consumePass(m, 0, NOW), m);
 });
 
 test("toSummary 把内部结构翻译成前端用的形状", () => {

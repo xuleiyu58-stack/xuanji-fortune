@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
@@ -80,6 +80,40 @@ test("命盘组件不得从 @/lib/bazi 入口取值 —— 那会把 places 连�
   );
   assert.match(chart, /from "@\/lib\/bazi\/shensha"/);
   assert.match(chart, /from "@\/lib\/bazi\/constants"/);
+});
+
+/**
+ * 上面两条只盯着两个组件，是新组件绕开它们的口子。这里改成扫全部客户端组件：
+ * 任何 `"use client"` 文件里的**值导入**（`import type` 会被完全擦除，不算）
+ * 都不许指向服务端专用的重模块。
+ *
+ * 为什么值得单独钉：lunar-typescript 是 1.33MB / 78 个文件，regions 是 61KB，
+ * openai SDK 也是几十万字节。它们都是排盘/解读用的，一个都不该进浏览器。
+ */
+const SERVER_ONLY = [
+  { from: "@/lib/bazi", why: "会把 places 连同 60KB 区划表拽进首屏" },
+  { from: "@/lib/bazi/places", why: "静态引用整份区划表" },
+  { from: "@/lib/bazi/regions", why: "60KB 区划表，应按需 import()" },
+  { from: "lunar-typescript", why: "1.33MB 历法库，只在服务端排盘用" },
+  { from: "@/lib/ai", why: "会拖进 openai SDK；常量请从叶子模块取" },
+];
+
+test("客户端组件不得值导入服务端专用的重模块", () => {
+  const dir = new URL("../src/components/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".tsx"));
+  assert.ok(files.length >= 8, `组件目录疑似塌缩，只扫到 ${files.length} 个文件`);
+
+  for (const file of files) {
+    const src = readFileSync(new URL(file, dir), "utf8");
+    if (!/^\s*["']use client["']/m.test(src)) continue;
+
+    for (const { from, why } of SERVER_ONLY) {
+      const escaped = from.replace(/[/@]/g, "\\$&");
+      // 值导入：import ... from "X"；负向断言排除 import type（会被擦除）
+      const re = new RegExp(`^import\\s+(?!type\\b)[^;]*from\\s+"${escaped}";`, "m");
+      assert.doesNotMatch(src, re, `${file} 值导入了 ${from} —— ${why}`);
+    }
+  }
 });
 
 test("出生时刻填到分钟，而不是挑一个时辰", () => {
