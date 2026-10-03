@@ -117,7 +117,7 @@ export default function PaymentModal({
                   <span className="amount">{price}</span>
                 </div>
 
-                <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
+                <div className="bg-white rounded-lg p-3 mb-5 mx-auto flex flex-col items-center">
                   <p className="text-gray-700 text-xs mb-2 font-medium">支付宝扫码支付</p>
                   {qrFailed ? (
                     <div className="w-52 h-64 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
@@ -143,11 +143,44 @@ export default function PaymentModal({
                   )}
                 </div>
 
-                {/* 付完钱必须知道找谁拿码 —— 这一步以前完全没有，是整条链路的断层 */}
-                <p className="text-paper-100/55 text-xs leading-relaxed mb-1">
-                  付款后请联系 <span className="text-gold-300">{CONTACT_LABEL}</span> 获取激活码
-                </p>
-                <p className="text-paper-100/55 text-xs mb-6 select-all">{CONTACT_EMAIL}</p>
+                {/*
+                  交付说明。
+                  
+                  这一段是整个付费流程里**最容易让用户卡住**的地方：他付完钱之后
+                  手上什么都没有，得先找站长拿激活码。此前这里只有两行浅灰小字，
+                  用户很可能直接点下面的按钮、然后对着一个空输入框发呆。
+                  
+                  所以改成编号步骤，并把"需要你主动发邮件"这一步明确指出来 ——
+                  支付宝个人收款码不带用户信息，站长无法主动联系付款人，
+                  只能由用户来联系。这件事必须讲在前面，而不是等他卡住了再说。
+                */}
+                <div className="text-left rounded-lg border border-gold-300/20 bg-mystic-900/40 px-4 py-3.5 mb-5">
+                  <p className="text-paper-100/70 text-xs mb-2.5 tracking-wider">
+                    付款后如何拿到解读
+                  </p>
+                  <ol className="space-y-2">
+                    {[
+                      "扫码付款",
+                      "把付款截图发到下面这个邮箱",
+                      "收到激活码后，点下方按钮输入",
+                    ].map((text, i) => (
+                      <li key={text} className="flex items-start gap-2.5">
+                        <span className="mt-px shrink-0 w-4 h-4 rounded-full bg-gold-400/15 text-gold-300 text-[10px] leading-4 text-center">
+                          {i + 1}
+                        </span>
+                        <span className="text-paper-100/65 text-xs leading-relaxed">{text}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="mt-3 pt-3 border-t border-gold-300/12 text-center">
+                    <span className="block text-paper-100/45 text-[10px] mb-1">
+                      {CONTACT_LABEL}
+                    </span>
+                    <span className="text-gold-300 text-sm tracking-wide select-all break-all">
+                      {CONTACT_EMAIL}
+                    </span>
+                  </p>
+                </div>
 
                 <div className="flex gap-3">
                   <button onClick={handleClose} className="btn-mystic flex-1 !py-2 !text-sm">
@@ -213,7 +246,8 @@ export default function PaymentModal({
                 </div>
 
                 <p className="text-paper-100/55 text-[11px] mt-4 leading-relaxed">
-                  还没拿到码？联系 {CONTACT_EMAIL}
+                  还没拿到码？把付款截图发到{" "}
+                  <span className="text-gold-300/80 select-all">{CONTACT_EMAIL}</span>
                 </p>
               </>
             )}

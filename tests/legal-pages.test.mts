@@ -157,7 +157,13 @@ test("可选变量在 .env.example 里是注释掉的", () => {
 
 test("必需变量没有留空值以外的默认 —— 空值表示必须自己填", () => {
   for (const name of REQUIRED_ENV) {
-    const line = ENV_EXAMPLE.split("\n").find((l) => l.startsWith(`${name}=`)) ?? "";
+    // 必须同时按 \r?\n 切分并去掉行尾 \r：这个项目用 CRLF 换行
+    // （Windows 检出的正常状态），只按 \n 切会把 \r 留在行尾，
+    // 于是 "KEY=" 变成 "KEY=\r" 而误报。这是测试自己的健壮性问题。
+    const line =
+      ENV_EXAMPLE.split(/\r?\n/)
+        .find((l) => l.startsWith(`${name}=`))
+        ?.replace(/\r$/, "") ?? "";
     // 只允许空值，或确实有意义的默认（每日预算有 300 的默认）
     if (name === "DEEPSEEK_DAILY_BUDGET") continue;
     assert.equal(line, `${name}=`, `${name} 不该预填任何值`);
