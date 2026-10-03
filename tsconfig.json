@@ -1,6 +1,12 @@
 {
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
+
+    // 显式指定 target。不写会默认落到 ES5，于是 `[...set]`、`for...of` 迭代 Set
+    // 这类写法全被 TS2802 挡下（已经咬过两次）。Next 用 SWC 出产物，
+    // tsc 在这里只做类型检查，所以 target 只影响检查口径，不影响最终代码。
+    "target": "ES2020",
+
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -12,14 +18,20 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] },
+
+    // 允许在 import 里写显式 .ts 扩展名。
+    //
+    // 不为别的：node --test 用原生类型擦除跑 TS 时，ESM 解析器要求写全扩展名，
+    // 不写就 ERR_MODULE_NOT_FOUND。而 src/ 下每个模块都能被直接单测，
+    // 正是这套排盘代码能在拆成多个文件的同时保持可验证的前提。
+    //
+    // 打开之前实测过三关：node --test 通过、tsc --noEmit 通过、next build 通过
+    // （tsc 只做类型检查、产物由 SWC 出，两者都不受这项影响）。
+    // 注意：这条只放开"可以写"，不要求写 —— 应用代码之间仍按惯例用 @/ 别名不带扩展名，
+    // 只有需要被单测直接引入的模块才写 .ts。
+    "allowImportingTsExtensions": true
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]

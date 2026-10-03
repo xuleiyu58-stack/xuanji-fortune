@@ -5,11 +5,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@400;600;700;900&display=swap');
 
 :root {
-  --background: #050508;
-  --foreground: #f5f0e8;
-  --gold: #c9963a;
-  --vermillion: #c41e3a;
-  --jade: #3d7356;
+  --background: #070b17;
+  --foreground: #f6f0e4;
+  --gold: #cfa968;
+  --gold-bright: #f4d99a;
+  --vermillion: #b43b3b;
+  --jade: #4b826a;
+  --midnight: #101a32;
   --font-display: 'Noto Serif SC', serif;
   --font-body: 'Noto Sans SC', sans-serif;
   --font-calligraphy: 'Ma Shan Zheng', cursive;
@@ -25,7 +27,11 @@ body {
   background: var(--background);
   font-family: var(--font-body);
   overflow-x: hidden;
+  text-rendering: optimizeLegibility;
 }
+
+a, button, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 3px; }
 
 .ink-bg {
   position: fixed;
@@ -33,10 +39,10 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(196, 30, 58, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 30%, rgba(201, 150, 58, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 50% at 50% 80%, rgba(61, 115, 86, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse at center, #050508 0%, #0a0a12 100%);
+    radial-gradient(ellipse 76% 56% at 50% -10%, rgba(64, 90, 151, 0.23) 0%, transparent 67%),
+    radial-gradient(ellipse 50% 40% at 15% 32%, rgba(180, 59, 59, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 48% 38% at 88% 52%, rgba(207, 169, 104, 0.09) 0%, transparent 72%),
+    linear-gradient(180deg, #070b17 0%, #0a1020 48%, #070b17 100%);
 }
 
 .text-gold {
@@ -93,21 +99,22 @@ body {
 }
 
 .mystic-card {
-  background: linear-gradient(135deg, rgba(17, 17, 34, 0.9) 0%, rgba(10, 10, 18, 0.95) 100%);
-  border: 1px solid rgba(201, 150, 58, 0.15);
-  backdrop-filter: blur(20px);
-  transition: all 0.4s ease;
+  background: linear-gradient(145deg, rgba(20, 31, 56, 0.88) 0%, rgba(9, 15, 30, 0.94) 100%);
+  border: 1px solid rgba(207, 169, 104, 0.17);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(14px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 .mystic-card:hover {
-  border-color: rgba(201, 150, 58, 0.4);
-  box-shadow: 0 0 30px rgba(201, 150, 58, 0.1), inset 0 0 30px rgba(201, 150, 58, 0.03);
-  transform: translateY(-2px);
+  border-color: rgba(244, 217, 154, 0.48);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28), inset 0 0 28px rgba(207, 169, 104, 0.035);
+  transform: translateY(-4px);
 }
 
 .glass {
-  background: rgba(17, 17, 34, 0.6);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(201, 150, 58, 0.1);
+  background: rgba(7, 11, 23, 0.72);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(207, 169, 104, 0.12);
 }
 
 .btn-mystic {
@@ -134,7 +141,7 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #c9963a 0%, #b8832e 100%);
+  background: linear-gradient(135deg, #e2bd77 0%, #b8823d 100%);
   border: none;
   color: #fff;
   padding: 14px 36px;
@@ -142,12 +149,12 @@ body {
   font-size: 1.05rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  border-radius: 2px;
+  border-radius: 4px;
   letter-spacing: 0.15em;
-  box-shadow: 0 4px 20px rgba(201, 150, 58, 0.3);
+  box-shadow: 0 10px 24px rgba(207, 169, 104, 0.22);
 }
 .btn-primary:hover {
-  box-shadow: 0 6px 30px rgba(201, 150, 58, 0.5);
+  box-shadow: 0 12px 30px rgba(207, 169, 104, 0.38);
   transform: translateY(-1px);
 }
 .btn-primary:active {
@@ -238,14 +245,61 @@ body {
   font-weight: 700;
 }
 
+/* 角标是标记，不是促销贴纸：金色描边、不闪烁。
+   红色留给真正的负向状态（错误、扣款提醒），不参与吸引注意力。 */
 .badge-hot {
-  background: linear-gradient(135deg, #c41e3a, #a0182e);
-  color: white;
-  font-size: 0.7rem;
+  background: rgba(201, 150, 58, 0.12);
+  color: #e8cf8d;
+  border: 1px solid rgba(201, 150, 58, 0.38);
+  font-size: 0.68rem;
   padding: 2px 8px;
   border-radius: 2px;
-  letter-spacing: 0.1em;
-  animation: pulseGold 2s ease-in-out infinite;
+  letter-spacing: 0.14em;
+}
+
+/* 印章 —— 会员等级与状态标记，取代 emoji 皇冠/月亮 */
+.glyph-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: #e8cf8d;
+  border: 1px solid rgba(201, 150, 58, 0.42);
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.hero-stage { isolation: isolate; }
+.hero-content { max-width: 46rem; }
+.hero-kicker, .section-eyebrow { color: rgba(244, 217, 154, 0.72); font-size: 0.72rem; letter-spacing: 0.26em; text-transform: uppercase; }
+.hero-title { font-size: clamp(5.8rem, 18vw, 11.5rem); line-height: .88; margin: 1.25rem 0 .9rem; filter: drop-shadow(0 10px 28px rgba(0, 0, 0, .45)); }
+.hero-rule { display: flex; align-items: center; gap: 1rem; margin: 1.1rem auto 1.5rem; max-width: 24rem; color: rgba(244, 217, 154, .6); font-family: var(--font-display); font-size: .82rem; letter-spacing: .2em; }
+.hero-rule::before, .hero-rule::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, rgba(207, 169, 104, .52)); }
+.hero-rule::after { transform: scaleX(-1); }
+.hero-lede { color: rgba(246, 240, 228, .64); font-size: 1rem; line-height: 2; margin: 0 auto 2rem; }
+.hero-note { color: rgba(246, 240, 228, .38); font-size: .75rem; margin-top: 1rem; letter-spacing: .05em; }
+.hero-constellation { color: rgba(222, 185, 115, .42); position: absolute; width: min(78vw, 37rem); height: min(78vw, 37rem); top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: -1; animation: constellationDrift 22s ease-in-out infinite; }
+/* 卡片高度由内容决定，配合 flex 把价格压到底部。
+   原先写死 20rem 会在三行文案下方留出大片死白。 */
+.fortune-card { min-height: 15rem; }
+.card-action { display: block; margin-top: 1rem; color: rgba(244, 217, 154, .75); font-size: .76rem; letter-spacing: .12em; opacity: 0; transform: translateY(4px); transition: opacity .25s ease, transform .25s ease; }
+.group:hover .card-action, .group:focus-visible .card-action { opacity: 1; transform: translateY(0); }
+.brand-mark { color: var(--gold-bright); }
+
+@keyframes constellationDrift { 0%, 100% { transform: translate(-50%, -50%) rotate(-4deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(4deg) scale(1.035); } }
+
+@media (max-width: 640px) {
+  .hero-stage { min-height: 46rem; }
+  .hero-title { font-size: clamp(5.3rem, 29vw, 7.6rem); }
+  .hero-lede { font-size: .92rem; max-width: 20rem; }
+  .hero-constellation { width: 120vw; height: 120vw; }
+  .fortune-card { min-height: 17rem; }
+  .card-action { opacity: .78; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
 
 @keyframes baguaSpin {

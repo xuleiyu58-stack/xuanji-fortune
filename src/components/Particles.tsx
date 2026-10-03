@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 interface Particle {
@@ -13,8 +13,22 @@ interface Particle {
   opacity: number;
 }
 
+/**
+ * 背景星尘。
+ *
+ * 两层降级，各自针对不同的人：
+ *
+ *  1. **prefers-reduced-motion** —— framer-motion 默认不看这个媒体查询，
+ *     40 个 repeat: Infinity 的动画会一直挂在合成器上。对前庭功能敏感的人
+ *     来说，这不是"更好看"，是会引发不适。开启这个偏好时只画静态的点。
+ *  2. 动画本身只影响装饰，不承载任何信息，所以关掉它不影响可用性。
+ *
+ * 注意 globals.css 里的 prefers-reduced-motion 规则只管 CSS 动画，
+ * 管不到 framer-motion 用 JS 驱动的这一层 —— 两边都要处理。
+ */
 export default function Particles() {
   const [particles, setParticles] = useState<Particle[]>([]);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const p: Particle[] = [];
@@ -33,7 +47,7 @@ export default function Particles() {
   }, []);
 
   return (
-    <div className="particles-container">
+    <div className="particles-container" aria-hidden="true">
       {particles.map((p) => (
         <motion.div
           key={p.id}
@@ -46,17 +60,26 @@ export default function Particles() {
             background: p.id % 3 === 0 ? "#c9963a" : p.id % 3 === 1 ? "#c41e3a" : "#e8cf8d",
             opacity: p.opacity,
           }}
-          animate={{
-            y: [-20, -120, -20],
-            x: [0, p.id % 2 === 0 ? 30 : -30, 0],
-            opacity: [p.opacity, p.opacity * 0.3, p.opacity],
-          }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          // 偏好人静的访客：不传 animate，星点就停在原地
+          animate={
+            reduceMotion
+              ? undefined
+              : {
+                  y: [-20, -120, -20],
+                  x: [0, p.id % 2 === 0 ? 30 : -30, 0],
+                  opacity: [p.opacity, p.opacity * 0.3, p.opacity],
+                }
+          }
+          transition={
+            reduceMotion
+              ? undefined
+              : {
+                  duration: p.duration,
+                  delay: p.delay,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }
+          }
         />
       ))}
     </div>
