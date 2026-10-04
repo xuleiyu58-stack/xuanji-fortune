@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import FortuneForm from "@/components/FortuneForm";
+import HomepageSample from "@/components/HomepageSample";
 import { Seal } from "@/components/Glyph";
 import { MODES, MEMBER_PLANS, formatPrice } from "@/lib/pricing";
 import { FAQ, faqJsonLd } from "@/lib/faq";
@@ -60,6 +61,12 @@ export default function Home() {
           description="填写出生信息。四柱、藏干、十神、神煞、五行、大运由程序排定，AI 据此解读命局格局、性情禀赋、事业财运与感情婚姻。"
         />
       </section>
+
+      {/* 样张放在表单**之后**：先把表单给人，让他填完再往下看会得到什么。
+          反过来放的话，第一屏就是一大段文字，把真正要做的事挤出视野。 */}
+      <div className="relative z-10 px-6">
+        <HomepageSample />
+      </div>
 
       <section className="relative z-10 py-20 px-6 bg-mystic-900/50">
         <div className="max-w-4xl mx-auto">
