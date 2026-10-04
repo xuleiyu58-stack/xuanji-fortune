@@ -9,9 +9,13 @@ const styles = readFileSync(new URL("../src/app/globals.css", import.meta.url), 
 test("首页就是排盘工具页，直接给出出生信息表单", () => {
   // 单产品站不该再有"选一种测算方式"的目录页 —— 那一步纯粹是摩擦
   assert.match(page, /<FortuneForm/);
-  // 出生信息的字段住在专用的 BirthInput 里，不在首页
+  // 出生信息的字段住在专用的 BirthInput 里，不在首页。
+  // 表单本身抽在 BirthForm 里 —— 首页和「改生辰重测」共用同一份，
+  // 所以这里查的是"FortuneForm 经由 BirthForm 落到 BirthInput"这条链。
   const form = readFileSync(new URL("../src/components/FortuneForm.tsx", import.meta.url), "utf8");
-  assert.match(form, /<BirthInput/, "FortuneForm 应渲染专用的出生信息表单");
+  assert.match(form, /<BirthForm/, "FortuneForm 应渲染共用的出生信息表单");
+  const birthForm = readFileSync(new URL("../src/components/BirthForm.tsx", import.meta.url), "utf8");
+  assert.match(birthForm, /<BirthInput/, "BirthForm 应渲染专用的出生信息表单");
 });
 
 test("出生信息表单支持阳历/农历两种历法", () => {

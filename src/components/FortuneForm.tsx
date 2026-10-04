@@ -5,13 +5,12 @@ import { motion } from "framer-motion";
 import PaymentModal from "./PaymentModal";
 import { saveReading, saveReadingToCloud } from "@/lib/store";
 import { useViewingReading, clearViewingReading } from "@/lib/viewing";
-import { LOCKED_SECTION_COUNT } from "@/lib/reading";
 import { useEntitlement, refreshEntitlement } from "@/lib/entitlements";
 import { redeemActivationCode } from "@/lib/redeem-client";
-import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
+import { MODES, formatPrice, type Mode } from "@/lib/pricing";
 import Glyph, { CHART_TRIGRAM } from "./Glyph";
 import BaziChart from "./BaziChart";
-import BirthInput from "./BirthInput";
+import BirthForm from "./BirthForm";
 import ReadingPanel from "./ReadingPanel";
 import ShareCard from "./ShareCard";
 import FollowUp from "./FollowUp";
@@ -45,6 +44,19 @@ export default function FortuneForm({ mode, title, description }: Props) {
    * 数据，迟早会出现一处更新另一处没更新的情况。
    */
   const [preview, setPreview] = useState<{ lockedSections: number } | null>(null);
+
+  /**
+   * 正在编辑的出生信息草稿。
+   *
+   * 与 `formData` 分开是为了「取消」：直接改 formData 的话，用户改了日期又反悔，
+   * 已经显示出来的那份解读对应的输入就被污染了 —— 追问、分享、再算一次
+   * 都会拿着错的生辰去走。分开存，取消就是把草稿丢掉，已提交的那份毫发无损。
+   *
+   * 用 `draft !== null` 本身当作"正在编辑"的开关，不再另设一个布尔量 ——
+   * 两个变量表达同一个状态，迟早会出现"编辑框开着但草稿是空的"这种组合。
+   */
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const editing = draft !== null;
 
   // 权益来自服务端，不再是 localStorage 里的一个布尔值
   const entitlement = useEntitlement();
@@ -90,11 +102,11 @@ export default function FortuneForm({ mode, title, description }: Props) {
     };
   }, [viewing]);
 
-  const callFortuneAPI = async () => {
+  const callFortuneAPI = async (input: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/fortune", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, ...formData }) });
+      const res = await fetch("/api/fortune", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, ...input }) });
       const data = await res.json().catch(() => null);
       // 盘随响应回来 —— 即便解读失败，盘也该照常呈现（排盘不依赖模型）
       if (data?.chart) setChart(data.chart);
@@ -111,7 +123,7 @@ export default function FortuneForm({ mode, title, description }: Props) {
         setPreview(null);
         setResult(data.content);
         // 不存图标 —— 记录里的卦象由 mode 直接推出，冗余存储只会两处漂移
-        const entry = { mode, title, result: data.content, input: formData, chart: data.chart } as const;
+        const entry = { mode, title, result: data.content, input, chart: data.chart } as const;
         saveReading(entry);
         // 登录后再多存一份到账户（失败静默，不影响本地那份）
         saveReadingToCloud(entry);
@@ -140,8 +152,26 @@ export default function FortuneForm({ mode, title, description }: Props) {
     // 改这一处是因为免费试读：此前 `if (unlocked)` 才调接口，否则直接弹窗，
     // 于是没付钱的用户**永远触发不到试读**。而"有没有额度"这件事只有服务端
     // 知道（设备、IP、全局三个维度），前端猜不准，也不该猜。
-    await callFortuneAPI();
+    await callFortuneAPI(formData);
   };
+
+  /**
+   * 结果页的「改生辰重测」。
+   *
+   * 提交的是草稿，不是 result 对应的那份输入 —— 用户改完按的就是"用新的这份算"。
+   * 成功后再把草稿收起来；失败（例如被额度拒绝）时留着，用户改一改还能再试。
+   */
+  const submitDraft = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!draft) return;
+    setFormData(draft);
+    await callFortuneAPI(draft);
+  };
+
+  /** 新的解读出来了就收起编辑面板。失败时留着 —— 草稿不能跟着错误一起丢掉。 */
+  useEffect(() => {
+    if (result) setDraft(null);
+  }, [result]);
 
   const handleCopyResult = () => {
     const text = result || "";
@@ -219,7 +249,16 @@ export default function FortuneForm({ mode, title, description }: Props) {
 
       {!viewing && !result && (
         <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} onSubmit={handleSubmit} className="mystic-card rounded-lg p-8 space-y-6">
-          <BirthInput value={formData} onChange={handleChange} />
+          <BirthForm
+            formId="fortune-form"
+            value={formData}
+            onChange={handleChange}
+            onSubmit={() => {}}
+            loading={loading}
+            unlocked={unlocked}
+            member={member}
+            onOpenPayment={() => setPaymentOpen(true)}
+          />
           {/* 主操作恒为金色。红色留给真正的负向状态，不做"催你下一步"的颜色 */}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? (
@@ -230,28 +269,62 @@ export default function FortuneForm({ mode, title, description }: Props) {
               "免费试读"
             )}
           </button>
-          {!unlocked && (
-            <p className="text-center text-paper-100/55 text-xs leading-relaxed">
-              可以先免费看「命局总评」一节，其余 {LOCKED_SECTION_COUNT} 节需激活后查看 ·{" "}
-              <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">
-                输入激活码
-              </button>
-              <br />
-              <span className="text-paper-100/55">
-                开通会员 ¥{formatPrice(MEMBER_PLANS[0].price)}/月，无限次解读
-              </span>
-            </p>
-          )}
-          {member && (
-            <p className="text-center text-paper-100/55 text-xs">会员权益生效中，本次不消耗次数</p>
-          )}
         </motion.form>
       )}
       {loading && (<div className="mystic-card rounded-lg p-12 text-center"><div className="mystic-loader mx-auto mb-6" /><p className="text-gold-300 text-lg" style={{ fontFamily: "'Noto Serif SC', serif" }}>天机推演中...</p><p className="text-paper-100/55 text-sm mt-2">AI 正在为您排盘解读，请稍候</p></div>)}
-      {!viewing && result && !loading && (
+      {/* 改生辰重测：与首页同一个表单组件，所以字段、校验、提示全都一致。
+          这一支要放在上面那支**之前** —— 两者条件互斥（draft 非 null 时上面那支
+          已经不渲染了），但把编辑面板写在前面，读代码时"正在改输入"这个状态
+          更靠近表单本身。 */}
+      {!viewing && draft && !loading && (
+        <motion.form
+          key="edit-birth"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          onSubmit={submitDraft}
+          className="mystic-card rounded-lg p-8 space-y-6"
+        >
+          <div>
+            <p className="text-gold-300 text-sm mb-1" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              修改出生信息
+            </p>
+            <p className="text-paper-100/55 text-xs leading-relaxed">
+              改好后重新排盘，会得到一份新的解读。
+            </p>
+          </div>
+          <BirthForm
+            editing
+            value={draft}
+            onChange={(name, value) => setDraft((prev) => ({ ...(prev ?? {}), [name]: value }))}
+            onSubmit={() => {}}
+            loading={loading}
+            unlocked={unlocked}
+            member={member}
+            onOpenPayment={() => setPaymentOpen(true)}
+            onCancel={() => { setDraft(null); }}
+          />
+        </motion.form>
+      )}
+
+      {!viewing && result && !loading && !draft && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
           {/* 先给盘，再给解。盘是排出来的，看得到；解是推出来的，读得懂。 */}
           {chart && <BaziChart chart={chart} />}
+
+          {/* 改生辰重测。
+              放在盘的正下方而不是页面底部 —— 用户盯着盘发现"时辰填错了"
+              的那一刻就在这儿，让他在同一屏里改掉，而不必滚回页首。
+              改的是草稿，取消就丢掉，已经显示出来的这份解读不受影响。 */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => { setDraft({ ...formData }); setResult(null); setError(null); }}
+              className="text-gold-400/70 hover:text-gold-300 text-sm underline transition-colors"
+            >
+              改生辰重测
+            </button>
+          </div>
+
           {/* 解读分节呈现：每节带「结论 / 依据 / 展开」，依据必须显示出盘面出处 */}
           <ReadingPanel content={result} locked={preview?.lockedSections ?? 0} />
 
@@ -296,12 +369,24 @@ export default function FortuneForm({ mode, title, description }: Props) {
           )}
         </motion.div>
       )}
-      {/* 解读失败但盘排好了：把盘给出去，比什么都不给强 */}
-      {!viewing && error && !loading && (
+      {/* 解读失败但盘排好了：把盘给出去，比什么都不给强。
+          有草稿时这一支不渲染 —— 那是"编辑到一半失败了"，
+          此时该让用户接着改，而不是把编辑面板换成一块错误面板。 */}
+      {!viewing && error && !loading && !draft && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 mt-6">
           <div className="mystic-card rounded-lg p-8 text-center border-vermillion-400/30">
             <p className="text-vermillion-400 mb-4">{error}</p>
-            <button onClick={() => { setError(null); setResult(null); }} className="btn-mystic">重新测算</button>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button onClick={() => { setError(null); setDraft({ ...formData }); }} className="btn-mystic">
+                改生辰重测
+              </button>
+              <button
+                onClick={() => { setError(null); setResult(null); setChart(null); setFormData({}); }}
+                className="btn-mystic"
+              >
+                重新测算
+              </button>
+            </div>
           </div>
           {chart && <BaziChart chart={chart} />}
         </motion.div>
