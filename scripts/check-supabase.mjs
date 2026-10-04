@@ -29,6 +29,26 @@ const step = (n, title) => console.log(`\n${n}. ${title}`);
 
 // ── 0. 环境变量 ─────────────────────────────────────────────
 step(0, "环境变量");
+
+// DeepSeek 的 key 也在这里检一遍。
+//
+// 起因是一次真实故障：线上解读稳定失败、秒级返回，排查许久才发现是
+// Vercel 上的 DEEPSEEK_API_KEY 填成了别的变量的值（长度 20、以 "_URL" 结尾）。
+// 这种"形状不对"的错误，在发请求之前就能看出来 —— 而一旦发出去，
+// 它表现为 401，和"key 过期""余额不足"混在一起，很难分辨。
+const dsKey = process.env.DEEPSEEK_API_KEY;
+if (!dsKey) {
+  bad("DEEPSEEK_API_KEY 未设置", "从 platform.deepseek.com 的 API keys 页面取");
+} else if (dsKey.length !== 35 || !dsKey.startsWith("sk-")) {
+  bad(
+    `DEEPSEEK_API_KEY 形状不对（长度 ${dsKey.length}，应以 sk- 开头且共 35 字符）`,
+    "多半是配置时串行了 —— 检查它是不是被填成了 Supabase 的 URL 或 JWT"
+  );
+} else if (dsKey !== dsKey.trim()) {
+  bad("DEEPSEEK_API_KEY 前后有空白字符", "重新粘贴一次，注意别带上空格或换行");
+} else {
+  ok("DEEPSEEK_API_KEY", "形状正确");
+}
 if (!url) {
   bad("NEXT_PUBLIC_SUPABASE_URL 未设置", "从 Supabase 的 Project Settings → API 取 Project URL");
 } else {
