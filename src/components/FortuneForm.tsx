@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import PaymentModal from "./PaymentModal";
 import { saveReading, saveReadingToCloud } from "@/lib/store";
 import { useViewingReading, clearViewingReading } from "@/lib/viewing";
+import { LOCKED_SECTION_COUNT } from "@/lib/reading";
 import { useEntitlement, refreshEntitlement } from "@/lib/entitlements";
 import { redeemActivationCode } from "@/lib/redeem-client";
 import { MODES, MEMBER_PLANS, formatPrice, type Mode } from "@/lib/pricing";
@@ -37,6 +38,13 @@ export default function FortuneForm({ mode, title, description }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  /**
+   * 非 null 表示"当前显示的是免费试读"。
+   *
+   * 只记待解锁的节数 —— 内容本身就在 `result` 里。分成两个 state 存同一份
+   * 数据，迟早会出现一处更新另一处没更新的情况。
+   */
+  const [preview, setPreview] = useState<{ lockedSections: number } | null>(null);
 
   // 权益来自服务端，不再是 localStorage 里的一个布尔值
   const entitlement = useEntitlement();
@@ -90,7 +98,17 @@ export default function FortuneForm({ mode, title, description }: Props) {
       const data = await res.json().catch(() => null);
       // 盘随响应回来 —— 即便解读失败，盘也该照常呈现（排盘不依赖模型）
       if (data?.chart) setChart(data.chart);
+
+      // 免费试读：没付钱，但拿到了第一节。这不是"失败"，
+      // 也不该存进历史 —— 存了的话用户会以为自己拥有这份解读。
+      if (data?.preview) {
+        setResult(data.content);
+        setPreview({ lockedSections: data.lockedSections ?? 0 });
+        return;
+      }
+
       if (data?.success) {
+        setPreview(null);
         setResult(data.content);
         // 不存图标 —— 记录里的卦象由 mode 直接推出，冗余存储只会两处漂移
         const entry = { mode, title, result: data.content, input: formData, chart: data.chart } as const;
@@ -117,12 +135,12 @@ export default function FortuneForm({ mode, title, description }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 放行与否由服务端说了算，前端这一层只负责少跑一趟
-    if (unlocked) {
-      await callFortuneAPI();
-      return;
-    }
-    setPaymentOpen(true);
+    // 一律交给服务端判定 —— 前端这一层不再自己决定"要不要弹付款窗"。
+    //
+    // 改这一处是因为免费试读：此前 `if (unlocked)` 才调接口，否则直接弹窗，
+    // 于是没付钱的用户**永远触发不到试读**。而"有没有额度"这件事只有服务端
+    // 知道（设备、IP、全局三个维度），前端猜不准，也不该猜。
+    await callFortuneAPI();
   };
 
   const handleCopyResult = () => {
@@ -209,12 +227,12 @@ export default function FortuneForm({ mode, title, description }: Props) {
             ) : unlocked ? (
               "开始解读"
             ) : (
-              `¥${price} 排盘解读`
+              "免费试读"
             )}
           </button>
           {!unlocked && (
             <p className="text-center text-paper-100/55 text-xs leading-relaxed">
-              排盘解读为付费功能，需激活后使用 ·{" "}
+              可以先免费看「命局总评」一节，其余 {LOCKED_SECTION_COUNT} 节需激活后查看 ·{" "}
               <button type="button" onClick={() => setPaymentOpen(true)} className="text-gold-400/60 hover:text-gold-300 underline transition-colors">
                 输入激活码
               </button>
@@ -235,14 +253,47 @@ export default function FortuneForm({ mode, title, description }: Props) {
           {/* 先给盘，再给解。盘是排出来的，看得到；解是推出来的，读得懂。 */}
           {chart && <BaziChart chart={chart} />}
           {/* 解读分节呈现：每节带「结论 / 依据 / 展开」，依据必须显示出盘面出处 */}
-          <ReadingPanel content={result} />
-          {/* 追问走的是同一道服务端闸门，所以放在解读之后 —— 先读完再决定要不要花 */}
-          <FollowUp birth={formData} previous={result} unlocked={unlocked} onNeedUnlock={() => setPaymentOpen(true)} />
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => { setResult(null); setChart(null); setFormData({}); setError(null); }} className="btn-mystic">重新测算</button>
-            {chart && <ShareCard chart={chart} />}
-            <button onClick={handleCopyResult} className={`btn-mystic ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制文字"}</button>
-          </div>
+          <ReadingPanel content={result} locked={preview?.lockedSections ?? 0} />
+
+          {/* 试读之后的转化位。
+              放在解读正下方而不是页面底部 —— 用户刚读完第一节、
+              正想知道"后面还有什么"的那一刻，是唯一该出现价格的位置。 */}
+          {preview && (
+            <div className="mystic-card rounded-lg p-6 text-center border-gold-glow">
+              <p className="text-paper-100/75 text-sm leading-relaxed mb-1">
+                以上是命局总评。日主强弱、性格禀赋、事业财运、感情婚姻、大运走势
+                等 {preview.lockedSections} 节，需要激活后查看。
+              </p>
+              <p className="text-paper-100/50 text-xs mb-5">
+                已有激活码？直接兑换即可，不必重新排盘。
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button onClick={() => setPaymentOpen(true)} className="btn-primary">
+                  ¥{price} 解锁完整解读
+                </button>
+                <button
+                  onClick={() => { setResult(null); setPreview(null); setChart(null); setError(null); }}
+                  className="btn-mystic"
+                >
+                  换个八字
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 追问与分享只在完整解读时出现 ——
+              试读状态下追问要花券，分享出去的是一份残文，都不合适 */}
+          {!preview && (
+            <>
+              {/* 追问走的是同一道服务端闸门，所以放在解读之后 —— 先读完再决定要不要花 */}
+              <FollowUp birth={formData} previous={result} unlocked={unlocked} onNeedUnlock={() => setPaymentOpen(true)} />
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onClick={() => { setResult(null); setChart(null); setFormData({}); setError(null); }} className="btn-mystic">重新测算</button>
+                {chart && <ShareCard chart={chart} />}
+                <button onClick={handleCopyResult} className={`btn-mystic ${copied ? "!bg-jade-500" : ""}`}>{copied ? "✓ 已复制分享文案" : "复制文字"}</button>
+              </div>
+            </>
+          )}
         </motion.div>
       )}
       {/* 解读失败但盘排好了：把盘给出去，比什么都不给强 */}

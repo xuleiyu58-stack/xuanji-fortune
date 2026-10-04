@@ -63,7 +63,26 @@ export interface GuardPass {
   consumedPassId: string | null;
 }
 
-export type GuardOutcome = GuardPass | { ok: false; response: NextResponse };
+/**
+ * 拒绝分支也带上"为什么拒绝"。
+ *
+ * 加这个字段是为了让路由能区分**拒绝的种类**：/api/fortune 在
+ * "没付钱"（403 / paid）时改送一次免费试读，而熔断（503）与额度耗尽（429）
+ * 必须原样拒绝 —— 那两种情况再送一次模型调用只会让服务端更吃紧。
+ *
+ * 在此之前路由只能靠 `guard.response.status` 反推，那既绕又容易看错。
+ */
+export type GuardOutcome =
+  | GuardPass
+  | {
+      ok: false;
+      response: NextResponse;
+      /** 拒绝的判定结果，路由据此分支 */
+      decision: Extract<AccessDecision, { allow: false }>;
+      deviceId: string;
+      ipHash: string;
+      isNewDevice: boolean;
+    };
 
 function clientIp(req: NextRequest): string {
   // Vercel 会在 x-forwarded-for 里给出真实来源，取第一段
@@ -118,6 +137,17 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
     console.error("用量读取失败:", err);
     return {
       ok: false,
+      // 读不到用量就拒绝 —— 这是"服务端故障"，不是"你没付钱"，
+      // 所以按 503 回，路由也不会把它当成可以送试读的情况。
+      decision: {
+        allow: false,
+        status: 503,
+        reason: "global",
+        message: "服务暂时不可用，请稍后再试",
+      },
+      deviceId,
+      ipHash,
+      isNewDevice,
       response: NextResponse.json(
         { success: false, error: "服务暂时不可用，请稍后再试" },
         { status: 503 }
@@ -145,6 +175,10 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
     // 状态码沿用既有约定：额度用尽 429、服务熔断 503、权限不足 403
     return {
       ok: false,
+      decision,
+      deviceId,
+      ipHash,
+      isNewDevice,
       response: withDeviceCookie(
         NextResponse.json(
           { success: false, error: decision.message, reason: decision.reason, remaining: 0 },
@@ -173,6 +207,10 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
       console.error("[guard] 凭证缺少 tid，拒绝消费单次券");
       return {
         ok: false,
+        decision: { allow: false, status: 403, reason: "paid", message: PAID_LOCKED_MESSAGE },
+        deviceId,
+        ipHash,
+        isNewDevice,
         response: withDeviceCookie(
           NextResponse.json(
             { success: false, error: PAID_LOCKED_MESSAGE, reason: "paid", remaining: 0 },
@@ -194,6 +232,10 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
       if (!first) {
         return {
           ok: false,
+          decision: { allow: false, status: 403, reason: "paid", message: PAID_LOCKED_MESSAGE },
+          deviceId,
+          ipHash,
+          isNewDevice,
           response: withDeviceCookie(
             NextResponse.json(
               { success: false, error: PAID_LOCKED_MESSAGE, reason: "paid", remaining: 0 },
@@ -211,6 +253,15 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
       console.error("消费台账写入失败，拒绝放行:", err);
       return {
         ok: false,
+        decision: {
+          allow: false,
+          status: 503,
+          reason: "global",
+          message: "服务暂时不可用，请稍后再试",
+        },
+        deviceId,
+        ipHash,
+        isNewDevice,
         response: withDeviceCookie(
           NextResponse.json(
             { success: false, error: "服务暂时不可用，请稍后再试" },

@@ -42,6 +42,30 @@ export const PAID_TRIAL_PER_DAY = 0;
  */
 export const PAID_TRIAL_IP_LIMIT = 0;
 
+/**
+ * 免费试读：不付钱也能看到**第一节**解读的次数。
+ *
+ * 为什么要有它：在试读之前，用户付 ¥6.6 之前完全看不到解读长什么样 ——
+ * 只有一份命盘和一句价格。这是拿真金白银赌一个没见过的东西。
+ * 命理解读是典型的「信任品」：必须先体验到质量，才谈得上付费意愿。
+ *
+ * 与 PAID_TRIAL_PER_DAY 的区别（两者不是一回事）：
+ *   · PAID_TRIAL_PER_DAY  送的是**完整解读**，等于白送一份 ¥6.6 的产品
+ *   · 这里只给第一节（命局总评），是样品而不是产品
+ *
+ * 一次试读 = 一次模型调用，成本约 ¥0.01 量级（见 README 的成本估算）。
+ * 设为 1 是刻意的最小值：够让人判断质量，不足以被当成免费额度刷。
+ */
+export const PREVIEW_PER_DEVICE_PER_DAY = 1;
+
+/**
+ * 试读在 IP 维度的上限。
+ *
+ * 比设备档宽，因为同一个 IP 后面可能坐着宿舍或整间公司；但必须存在，
+ * 否则清 cookie 就能无限续杯。3 是经验值：够一家人试，挡得住脚本。
+ */
+export const PREVIEW_PER_IP_PER_DAY = 3;
+
 export interface ModeInfo {
   title: string;
   /** 单位：元。0 表示免费模式。 */

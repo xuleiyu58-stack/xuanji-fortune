@@ -64,6 +64,38 @@ const FOCUS_LABEL: Record<string, string> = {
   健康: "健康运势",
 };
 
+/**
+ * 试读用的系统提示。
+ *
+ * 刻意**只让模型写一节**，而不是写完整解读再截断。理由是成本与延迟：
+ *   · 只写一节约 300 token，完整解读约 2200 —— 差 7 倍
+ *   · 试读是每个新访客都会触发一次的，按整份生成等于把成本乘以七
+ *
+ * 格式与完整解读保持一致（结论/依据/展开），这样两边的渲染是同一套代码，
+ * 而且用户在试读里看到的「依据」写法和付钱后完全一样 —— 试读就必须
+ * 代表真实质量，否则它就是在骗人。
+ *
+ * 结尾刻意留一句悬念：命局总评本身就该引出后面几节的问题。
+ */
+const PREVIEW_PROMPT = `你是一位精通子平八字与五行生克的命理师。用户会提供一份**已经排好的命盘**——四柱、藏干、十神、神煞、五行分布、大运、格局、用神均由程序精确推算，你不必也不得自行推算或改动其中任何数字。
+
+这次只写**一节**，就写【命局总评】。整节控制在 200 字以内。
+
+格式必须严格照下面来，三段一个都不能少：
+
+【命局总评】
+结论：一句话说清这副命局的核心特征
+依据：盘上哪一柱、哪个十神、哪种五行关系支撑了这个判断
+展开：两三句白话，把道理讲给不懂八字的人听
+
+要求：
+- **「依据」是这一节最重要的部分。** 必须点到具体位置，例如「月支酉藏辛，辛为日主甲木之正官，且透出年干」。写不出依据的判断，就不要写。
+- 不要复述整份排盘数据，只引用支撑你判断的那一两处。
+- 术语第一次出现时要解释，让不懂八字的人也能读懂。
+- 不要写【日主强弱】【性格禀赋】【事业财运】【感情婚姻】【大运走势】【大师寄语】这几节 —— 那些留给完整解读。
+- 不做健康、疾病、生死的断言，不推荐投资标的，不预测具体事件。
+- 第一行单独写「命理之说，信则有不信则无，仅供参考娱乐」，然后直接开始【命局总评】，不要在它前后加别的说明。`;
+
 export interface BaziResult {
   success: boolean;
   content?: string;
@@ -78,7 +110,17 @@ export interface BaziResult {
   chart?: BaziChart;
 }
 
-export async function readBazi(userInput: Record<string, string>): Promise<BaziResult> {
+/**
+ * 排盘并解读。
+ *
+ * `preview` 为真时只生成【命局总评】一节 —— 给未付费的新访客看。
+ * 这不是「完整解读的截断」：调用的是另一个更短的提示词，成本与延迟都低得多。
+ * 详见 PREVIEW_PROMPT 的注释。
+ */
+export async function readBazi(
+  userInput: Record<string, string>,
+  preview = false
+): Promise<BaziResult> {
   const calendar = userInput.calendar === "lunar" ? "lunar" : "solar";
   const lunarLeap = userInput.lunarLeap === "true";
 
@@ -117,17 +159,19 @@ export async function readBazi(userInput: Record<string, string>): Promise<BaziR
   const focus = FOCUS_LABEL[userInput.question ?? ""] ?? "";
   const userMessage =
     `以下命盘已由程序精确排定，请直接解读，不要自行推算或改动：\n\n${chartToPrompt(chart)}` +
-    (focus ? `\n\n用户最关心的方向：${focus}` : "");
+    // 试读只有一节，没有"关注方向"可言 —— 带上它反而会诱导模型把别的节也写了
+    (focus && !preview ? `\n\n用户最关心的方向：${focus}` : "");
 
   try {
     const response = await client().chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: preview ? PREVIEW_PROMPT : SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
       temperature: 0.9,
-      max_tokens: 2200,
+      // 试读只写一节，给 500 足够；留出余量是因为模型偶尔会多写一点
+      max_tokens: preview ? 500 : 2200,
     });
 
     const choice = response.choices[0];
@@ -139,6 +183,12 @@ export async function readBazi(userInput: Record<string, string>): Promise<BaziR
     if (!content) {
       console.error("AI 返回空内容:", JSON.stringify(choice?.finish_reason));
       return { success: false, error: "解读生成失败，请稍后重试", chart };
+    }
+
+    // 试读被截断不是错误 —— 它本来就短，切在半句也只是少几个字，
+    // 不该像完整解读那样加一句"因长度上限收束"的说明
+    if (preview) {
+      return { success: true, content, chart };
     }
 
     // 被 max_tokens 截断时明说：用户宁可知道"只出来一半"，

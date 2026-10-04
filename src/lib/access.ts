@@ -126,3 +126,36 @@ export function decideAccess(
   }
   return { allow: true, consume: "quota", via: "trial" };
 }
+
+/**
+ * 这次请求能不能拿到**免费试读**（只看第一节）。
+ *
+ * 与 decideAccess 分开，是因为它回答的是另一个问题：
+ * decideAccess 判的是"能不能拿到完整解读"，这里判的是"连一节都拿不到的话，
+ * 要不要给一份样品"。
+ *
+ * 三个前提，缺一不可：
+ *   · 没有可用凭证 —— 已经付过钱的人不需要试读，走完整路径
+ *   · 设备额度没用完
+ *   · IP 额度没用完 —— 少了这条，清 cookie 就能无限次试读
+ *
+ * 纯函数、零 import，与 decideAccess 保持同样的可测性。
+ */
+export function decidePreview(
+  counts: UsageCounts,
+  entitlement: AccessEntitlement | null,
+  nowSec: number,
+  perDevice: number,
+  perIp: number
+): boolean {
+  if (perDevice <= 0 || perIp <= 0) return false;
+
+  // 已有凭证的人走完整解读，不该被算成试读
+  if (entitlement) {
+    const isMember = entitlement.member !== null && entitlement.member > nowSec;
+    const hasPass = entitlement.passes.some((p) => p.n > 0 && p.e > nowSec);
+    if (isMember || hasPass) return false;
+  }
+
+  return counts.device < perDevice && counts.ip < perIp;
+}

@@ -63,7 +63,19 @@ function SectionCard({ section }: { section: ReadingSection }) {
   );
 }
 
-export default function ReadingPanel({ content }: { content: string }) {
+export default function ReadingPanel({
+  content,
+  locked = 0,
+}: {
+  content: string;
+  /**
+   * 还有多少节没解锁（免费试读时为正数）。
+   *
+   * 面板只负责显示"下面还有东西"，**不管怎么解锁** —— 付费入口由调用方
+   * 决定放在哪里。解读组件不该知道自己卖多少钱。
+   */
+  locked?: number;
+}) {
   const parsed = useMemo(() => parseReading(content), [content]);
 
   // 免责声明由 parseReading 从正文里剥掉（它不该混进任何一节的「依据」），
@@ -94,15 +106,39 @@ export default function ReadingPanel({ content }: { content: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-lg text-gold" style={SERIF}>大师解读</h3>
+        <h3 className="text-lg text-gold" style={SERIF}>
+          {locked > 0 ? "命局总评 · 试读" : "大师解读"}
+        </h3>
         <p className="text-paper-100/55 text-xs">
-          共 {parsed.sections.length} 节
-          {withBasis > 0 && `，其中 ${withBasis} 节给出了盘面依据`}
+          {locked > 0 ? (
+            <>已显示 1 节，还有 {locked} 节待解锁</>
+          ) : (
+            <>
+              共 {parsed.sections.length} 节
+              {withBasis > 0 && `，其中 ${withBasis} 节给出了盘面依据`}
+            </>
+          )}
         </p>
       </div>
       {parsed.sections.map((s) => (
         <SectionCard key={s.title} section={s} />
       ))}
+
+      {/* 未解锁部分的"影子"。
+          用灰条而不是把小节名直接列出来：列出名字等于把目录白送出去，
+          而灰条传达的是"这里还有内容"——既让人知道有多少，又不透露是什么。 */}
+      {locked > 0 && (
+        <div className="rounded-lg border border-gold-300/10 bg-mystic-800/20 p-5 space-y-3" aria-hidden>
+          {Array.from({ length: Math.min(locked, 6) }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-24 rounded bg-paper-100/10" />
+              <div className="h-2.5 w-full rounded bg-paper-100/[0.07]" />
+              <div className="h-2.5 w-4/5 rounded bg-paper-100/[0.07]" />
+            </div>
+          ))}
+        </div>
+      )}
+
       {disclaimer}
     </div>
   );

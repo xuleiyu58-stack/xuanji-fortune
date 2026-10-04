@@ -139,3 +139,26 @@ function append(existing: string | undefined, next: string): string {
 export function hasBasis(section: ReadingSection): boolean {
   return Boolean(section.part.basis && section.part.basis.trim().length > 0);
 }
+
+/**
+ * 完整解读固定包含的小节。
+ *
+ * 顺序与标题由 SYSTEM_PROMPT（lib/ai.ts）规定，模型必须原样使用。
+ * 写在这里是因为**界面需要知道"总共几节"**：免费试读只回第一节，
+ * 客户端手里没有完整解读，光看内容推不出总数。
+ *
+ * 硬编码一个 6 也能用，但那样两处终究会漂移 —— 改提示词的人不会
+ * 记得去改界面上的数字。这里放一份，两边都引它。
+ */
+export const SECTION_TITLES = [
+  "命局总评",
+  "日主强弱",
+  "性格禀赋",
+  "事业财运",
+  "感情婚姻",
+  "大运走势",
+  "大师寄语",
+] as const;
+
+/** 试读解锁后还能看到几节。 */
+export const LOCKED_SECTION_COUNT = SECTION_TITLES.length - 1;
