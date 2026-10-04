@@ -216,11 +216,17 @@ export default function BaziChart({ chart }: { chart: Chart }) {
         title="四柱"
         hint="年柱看祖上与早年，月柱看父母与青年，日柱是自己与配偶，时柱看子女与晚年。每柱上下各一字：上为天干，下为地支。"
       >
-        <div className="grid grid-cols-4 gap-2 sm:gap-3">
+        {/* 四柱等高对齐。
+            地支藏干的数量天生不等（子 1 个、午 2 个、丑 3 个），若各列按内容
+            自然堆叠，下面那三行标注（纳音／十二长生／空亡）就会上下错开 ——
+            在手机上尤其明显，看着像表格没对齐。
+            所以每列做成 flex 纵向布局，让藏干区吃掉多余高度（flex-1），
+            标注块自然落到底部。分隔线也随之落在同一水平线上。 */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-3 items-stretch">
           {chart.pillars.map((p) => (
             <div
               key={p.label}
-              className={`rounded-lg border px-2 py-4 text-center ${
+              className={`flex flex-col rounded-lg border px-2 py-4 text-center ${
                 p.isDayMaster ? "border-gold-500/45 bg-gold-500/[0.07]" : "border-gold-300/10 bg-mystic-800/40"
               }`}
             >
@@ -241,8 +247,9 @@ export default function BaziChart({ chart }: { chart: Chart }) {
               </div>
 
               {/* 藏干与支中十神 —— 地支才是根，只看天干看不全。
-                  支中十神写在各自的藏干旁边，而不是单列一行，免得又跟天干混起来。 */}
-              <div className="mt-3 pt-3 border-t border-gold-300/10">
+                  支中十神写在各自的藏干旁边，而不是单列一行，免得又跟天干混起来。
+                  flex-1 让它吃掉本列多余的高度，于是下面那三行无论藏干几个都对齐。 */}
+              <div className="flex-1 mt-3 pt-3 border-t border-gold-300/10">
                 <div className="text-[10px] text-paper-100/55 mb-1.5">藏干</div>
                 <div className="space-y-1">
                   {p.hidden.map((h) => (
@@ -254,7 +261,10 @@ export default function BaziChart({ chart }: { chart: Chart }) {
                 </div>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-gold-300/10 space-y-1">
+              {/* mt-auto 顶到底部：与上面 flex-1 配合，三行标注在四列里同高。
+                  这个边框不能挂在 flex-1 那一层 —— 它是随高度伸缩的，
+                  边框会跟着跑，那就白对齐了。 */}
+              <div className="mt-auto pt-2 border-t border-gold-300/10 space-y-1">
                 <div className="text-[10px] text-paper-100/55">{p.naYin}</div>
                 <div className="text-[10px] text-paper-100/55">{p.diShi ?? "—"}</div>
                 {p.xunKong && <div className="text-[10px] text-paper-100/55">空亡 {p.xunKong}</div>}
