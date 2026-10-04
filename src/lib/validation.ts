@@ -10,9 +10,13 @@ export const MAX_LONG_FIELD = 500;
 export const MODE_FIELDS: Record<string, readonly string[]> = {
   // calendar / lunarLeap / place 都是「出生信息的表述方式」，不是自由文本：
   // 它们同样要过白名单，否则用户可以塞任意值把排盘带偏。
+  //
+  // timeUnknown 也在这里。它是个布尔语义的标记，但走的是与 lunarLeap 相同的
+  // 约定：客户端传字符串 "true"，服务端用 `=== "true"` 判定。这样白名单
+  // 只需处理字符串一种类型，不必为它开一个特例。
   bazi: [
     "birthDate", "birthTime", "gender", "question",
-    "calendar", "lunarLeap", "province", "city",
+    "calendar", "lunarLeap", "province", "city", "timeUnknown",
   ],
 };
 

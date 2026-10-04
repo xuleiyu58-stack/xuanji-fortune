@@ -213,16 +213,35 @@ export default function BaziChart({ chart }: { chart: Chart }) {
 
       {/* ── 四柱 ───────────────────────────────────────── */}
       <Section
-        title="四柱"
-        hint="年柱看祖上与早年，月柱看父母与青年，日柱是自己与配偶，时柱看子女与晚年。每柱上下各一字：上为天干，下为地支。"
+        title={chart.timeUnknown ? "三柱" : "四柱"}
+        hint={
+          chart.timeUnknown
+            ? "时辰不详，只排年、月、日三柱。年柱看祖上与早年，月柱看父母与青年，日柱是自己与配偶 —— 时柱所主的子女与晚年这一盘不列。每柱上下各一字：上为天干，下为地支。"
+            : "年柱看祖上与早年，月柱看父母与青年，日柱是自己与配偶，时柱看子女与晚年。每柱上下各一字：上为天干，下为地支。"
+        }
       >
-        {/* 四柱等高对齐。
+        {/* 时辰不详的提示。放在盘**上方**而不是下方 —— 用户会先看盘，
+            得在解读之前就知道这张盘少了一柱，否则他会以为时柱被漏掉了。 */}
+        {chart.timeUnknown && (
+          <p className="mb-4 rounded border border-gold-300/20 bg-mystic-900/50 px-3 py-2.5 text-xs leading-relaxed text-paper-100/60">
+            {chart.timeUnknownNote ??
+              "出生时辰不详，本盘只排年、月、日三柱，时柱留空。"}
+          </p>
+        )}
+        {/* 各柱等高对齐。
             地支藏干的数量天生不等（子 1 个、午 2 个、丑 3 个），若各列按内容
             自然堆叠，下面那三行标注（纳音／十二长生／空亡）就会上下错开 ——
             在手机上尤其明显，看着像表格没对齐。
             所以每列做成 flex 纵向布局，让藏干区吃掉多余高度（flex-1），
-            标注块自然落到底部。分隔线也随之落在同一水平线上。 */}
-        <div className="grid grid-cols-4 gap-2 sm:gap-3 items-stretch">
+            标注块自然落到底部。分隔线也随之落在同一水平线上。
+
+            列数按实际柱数走：时辰不详时只有三柱，写死 grid-cols-4 会让每列
+            只占四分之一宽、右边空出一大块。 */}
+        <div
+          className={`grid gap-2 sm:gap-3 items-stretch ${
+            chart.pillars.length === 3 ? "grid-cols-3" : "grid-cols-4"
+          }`}
+        >
           {chart.pillars.map((p) => (
             <div
               key={p.label}

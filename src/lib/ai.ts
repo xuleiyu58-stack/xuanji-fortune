@@ -147,6 +147,8 @@ export async function readBazi(
     gender: userInput.gender ?? "",
     calendar,
     lunarLeap,
+    // 出生时辰不详：只排年、月、日三柱，不猜时辰
+    timeUnknown: userInput.timeUnknown === "true",
     // 出生地留空就不做真太阳时校正 —— 见 bazi/solar-time.ts
     province: userInput.province || undefined,
     city: userInput.city || undefined,

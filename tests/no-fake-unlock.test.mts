@@ -175,18 +175,17 @@ test("写凭证的位置是封闭的一份名单", () => {
   //   · redeem          兑换后签发新权益
   //   · fortune / ask   消耗单次券后回写 n-1
   //   · entitlement     顺带清理过期凭证
-  //   · quota-guard     只读闸门（readOnlyGuard）把"从账户补签"的凭证写回
+  //   · chart           只读排盘的接口，把"从账户补签"的凭证写回
   //   · pass-cookie     定义处本身
   //
   // 多出来的写入点意味着多一条能凭空造权益的路径，所以这条断言必须逐个点名。
-  // 注意 /api/chart 不在名单里：它自己不动 cookie，只管调 readOnlyGuard。
   const KNOWN = [
     "app/api/ask/route.ts",
+    "app/api/chart/route.ts",
     "app/api/entitlement/route.ts",
     "app/api/fortune/route.ts",
     "app/api/redeem/route.ts",
     "lib/server/pass-cookie.ts",
-    "lib/server/quota-guard.ts",
   ].sort();
 
   const writers = TARGETS.filter((rel) => /withPassCookie\(/.test(source(rel))).sort();

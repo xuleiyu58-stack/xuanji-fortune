@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
     gender: checked.input.gender ?? "",
     calendar: checked.input.calendar === "lunar" ? "lunar" : "solar",
     lunarLeap: checked.input.lunarLeap === "true",
+    timeUnknown: checked.input.timeUnknown === "true",
     province: checked.input.province || undefined,
     city: checked.input.city || undefined,
   });

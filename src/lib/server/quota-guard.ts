@@ -17,11 +17,23 @@ import {
   FREE_IP_DAILY_LIMIT,
   PAID_TRIAL_IP_LIMIT,
   PAID_TRIAL_PER_DAY,
+  PREVIEW_PER_DEVICE_PER_DAY,
+  PREVIEW_PER_IP_PER_DAY,
   isFreeMode,
 } from "@/lib/pricing";
-import { decideAccess, type AccessDecision, type UsageCounts } from "@/lib/access";
+import {
+  decideAccess,
+  decidePreview,
+  type AccessDecision,
+  type UsageCounts,
+} from "@/lib/access";
 import type { Entitlement } from "@/lib/entitlement";
-import { dailyGlobalBudget, hashIp, readUsage } from "@/lib/server/usage-store";
+import {
+  dailyGlobalBudget,
+  hashIp,
+  readPreviewUsage,
+  readUsage,
+} from "@/lib/server/usage-store";
 import { ensurePassCookie, nowSec, withPassCookie } from "@/lib/server/pass-cookie";
 import { claimPassConsumption, passIdOf } from "@/lib/server/account-store";
 import { passSecret } from "@/lib/server/runtime";
@@ -288,20 +300,27 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
 }
 
 /**
- * 只读准入：判定能不能用，但**不做任何消耗**。
+ * 只读准入：判定能不能看到一个**不花模型钱**的结果（命盘、历史回看）。
  *
  * 与 quotaGuard 的区别只有一个，但很关键：它不认领消费台账、不记账。
- * 给「历史回看」这类**不调用模型**的接口用 —— 用户已经为那份解读付过钱了，
- * 点开重看再扣一次是错的。
  *
- * 为什么不复用 quotaGuard：那个函数的语义里包含「先占坑，紧接着就要调模型」。
- * 拿它去拦一个不调模型的接口，会在用户毫无察觉的情况下扣掉一张券。
- * 同一个函数有两种语义，迟早会有人在错误的场景调用它。
+ * 准入条件比 quotaGuard **宽**，这是有意的：
+ *   · 有可用凭证（会员或未过期的券）→ 放行。付过钱的人看自己的盘是天经地义
+ *   · 否则，还有试读额度 → 放行。新访客总要能看到盘才知道自己在买什么
+ *   · 否则拒绝
+ *
+ * 为什么宽：排盘是纯计算，不花钱。而此前这里直接套 quotaGuard 的付费档
+ * （PAID_TRIAL_PER_DAY = 0），结果是**用户兑完码回来点开自己的历史记录，
+ * 命盘补不出来** —— 因为那个 0 是给"要不要调用模型"定的，不是给"能不能
+ * 看一眼盘"定的。两件事的额度必须分开。
  */
 export async function readOnlyGuard(
   req: NextRequest,
   mode: string
-): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+): Promise<
+  | { ok: true; reissued: Entitlement | null }
+  | { ok: false; response: NextResponse }
+> {
   const existing = req.cookies.get(DEVICE_COOKIE)?.value;
   const deviceId = existing ?? randomUUID();
   const isNewDevice = existing === undefined;
@@ -309,9 +328,10 @@ export async function readOnlyGuard(
 
   const { entitlement, reissued } = await ensurePassCookie(req);
 
-  let counts: UsageCounts;
+  // 全局熔断仍然要看：它保护的是"任何形式的服务端开销"，排盘也算
+  let globalCount: number;
   try {
-    counts = await readUsage(deviceId, ipHash);
+    globalCount = (await readUsage(deviceId, ipHash)).global;
   } catch (err) {
     console.error("用量读取失败:", err);
     return {
@@ -322,24 +342,13 @@ export async function readOnlyGuard(
       ),
     };
   }
-
-  const decision = decideAccess(
-    mode,
-    counts,
-    { device: PAID_TRIAL_PER_DAY, ip: PAID_TRIAL_IP_LIMIT, global: dailyGlobalBudget() },
-    entitlement,
-    isFreeMode(mode),
-    nowSec(),
-    PAID_TRIAL_PER_DAY
-  );
-
-  if (!decision.allow) {
+  if (globalCount >= dailyGlobalBudget()) {
     return {
       ok: false,
       response: withDeviceCookie(
         NextResponse.json(
-          { success: false, error: "该模式需激活后使用", reason: "paid", remaining: 0 },
-          { status: 403 }
+          { success: false, error: "今日测算人数较多，请明天再来", reason: "global" },
+          { status: 503 }
         ),
         deviceId,
         isNewDevice
@@ -347,12 +356,54 @@ export async function readOnlyGuard(
     };
   }
 
-  // 补签的凭证仍要写回，否则下次又得查一次库。这不涉及消费，是纯收益。
-  const res = NextResponse.json({ ok: true });
-  const secret = passSecret();
-  if (secret && reissued) withPassCookie(res, reissued, secret);
+  // 有凭证就放行 —— 这就是"付过钱的人不该被免费额度拦住"那条原则
+  const now = nowSec();
+  const isMember = entitlement?.member != null && entitlement.member > now;
+  const hasPass = entitlement?.passes.some((p) => p.n > 0 && p.e > now) ?? false;
 
-  return { ok: true };
+  if (!isMember && !hasPass) {
+    // 没有凭证，看还有没有试读额度。与 /api/fortune 的试读判定**同源**
+    // （同一个 decidePreview），否则两处迟早会漂移 —— 而漂移的那处
+    // 要么白送额度，要么把本该看到盘的人挡在外面。
+    let counts: UsageCounts;
+    try {
+      counts = await readPreviewUsage(deviceId, ipHash);
+    } catch (err) {
+      console.error("试读用量读取失败:", err);
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { success: false, error: "服务暂时不可用，请稍后再试" },
+          { status: 503 }
+        ),
+      };
+    }
+
+    const allowed = decidePreview(
+      counts,
+      entitlement,
+      now,
+      PREVIEW_PER_DEVICE_PER_DAY,
+      PREVIEW_PER_IP_PER_DAY
+    );
+    if (!allowed) {
+      return {
+        ok: false,
+        response: withDeviceCookie(
+          NextResponse.json(
+            { success: false, error: "该模式需激活后使用", reason: "paid", remaining: 0 },
+            { status: 403 }
+          ),
+          deviceId,
+          isNewDevice
+        ),
+      };
+    }
+  }
+
+  // 补签的凭证交给调用方写回 —— 这个函数不构造响应，所以写不了 cookie。
+  // 写回是纯收益（省掉下次的一次查库），不是放行的必要条件。
+  return { ok: true, reissued };
 }
 
 /**

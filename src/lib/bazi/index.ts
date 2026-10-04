@@ -200,10 +200,16 @@ export interface BaziChart {
   /** 合冲刑害 */
   relations: ChartRelations;
 
-  /** 胎元、命宫、身宫 —— 传统上用来补看命局的三个点 */
+  /**
+   * 胎元、命宫、身宫 —— 传统上用来补看命局的三个点。
+   *
+   * 胎元只由年柱与月柱决定，总是有值。
+   * 命宫与身宫都要用到**时辰**，所以时辰不详时为 undefined —— 那时给出来
+   * 就等于给了假数据。界面与提示词都要据此省略它们。
+   */
   taiYuan: string;
-  mingGong: string;
-  shenGong: string;
+  mingGong?: string;
+  shenGong?: string;
 
   startAgeText: string;
   daYun: DaYunStep[];
@@ -227,6 +233,20 @@ export interface BaziChart {
   trueSolarCrossedDay?: boolean;
   /** 跨日时，排盘实际所用的日期（与上报的生日不同，界面需并列显示） */
   chartDateText?: string;
+
+  // ── 时辰不详时的情形 ────────────────────────────────
+  /**
+   * 出生时辰不详，这张盘只有年、月、日三柱。
+   *
+   * 此时 `pillars` 长度为 3，且下列字段没有意义、一律不返回：
+   * `mingGong` / `shenGong`（命宫身宫由时辰推出）、`trueSolarTime`
+   * 及其相关项（没有时刻就无从校正）、`shenGong` 同理。
+   *
+   * `taiYuan` 仍然有效 —— 它只由年柱与月柱决定。
+   */
+  timeUnknown?: boolean;
+  /** 时辰不详时，给用户看的影响说明（界面与提示词都要用） */
+  timeUnknownNote?: string;
 }
 
 export type Calendar = "solar" | "lunar";
@@ -237,9 +257,21 @@ export interface BaziInput {
    * 闰月用 `lunarLeap` 单独表达，不塞进日期串 —— 日期串里写不下这个信息。
    */
   birthDate: string;
-  /** 形如「巳时 09:00-11:00」，或直接是 `HH:MM` */
+  /** 形如「巳时 09:00-11:00」，或直接是 `HH:MM`。`timeUnknown` 为真时忽略 */
   birthTime: string;
   gender: string;
+  /**
+   * 出生时辰不详。
+   *
+   * 这是真实的常态：很多人根本不知道自己是几点生的，问父母也问不出来。
+   * 此前时辰是必填，这批人卡在表单上就走了。
+   *
+   * 处理方式是**不猜**：只排年、月、日三柱，时柱留空，并如实说明影响。
+   * 刻意不取"子时"或"午时"之类的默认值 —— 那等于替用户编了一个时辰，
+   * 而时柱一错，时柱本身、五行分布、身强身弱、格局、大运起运岁数全跟着错。
+   * 宁可少给一柱，也不能给一柱假的。
+   */
+  timeUnknown?: boolean;
   /** 历法，默认阳历 */
   calendar?: Calendar;
   /** 该农历月是否为闰月 */
@@ -319,7 +351,17 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
   const dateMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(input.birthDate.trim());
   if (!dateMatch) return null;
 
-  const time = parseHourMinute(input.birthTime);
+  /**
+   * 时辰不详时，内部仍需要一个时刻来驱动日历换算。
+   *
+   * 取正午是有讲究的：正午离子时（换日）最远，即使做了真太阳时校正
+   * 也不会跨日，所以年、月、日三柱在"任何可能的真实时辰"下都成立 ——
+   * 这正是三柱盘能成立的前提。
+   *
+   * 这个 12:00 只是计算脚手架，**不会**出现在任何返回给用户的字段里。
+   */
+  const timeUnknown = input.timeUnknown === true;
+  const time = timeUnknown ? { hour: 12, minute: 0 } : parseHourMinute(input.birthTime);
   if (!time) return null;
 
   const year = Number.parseInt(dateMatch[1], 10);
@@ -373,7 +415,9 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
 
   // 优先按「省 + 市」查（跨省重名时才不会取错）；只有市名时退回按市名查
   const longitude = longitudeOfCity(input.province, input.city) ?? longitudeOf(input.city);
-  if (longitude !== undefined) {
+  // 时辰不详时不做真太阳时校正：没有时刻就无从校正，而"校正"本身也会改变时刻。
+  // solarOffsetMinutes / trueSolarTime 保持 undefined，界面据此不显示这段。
+  if (longitude !== undefined && !timeUnknown) {
     // 1949 年前中国分五个时区，钟表走的未必是东八区 —— 按经度取当年实际用的那个
     const zone = standardTimeFor(longitude, gy);
     const r = toTrueSolarTime(time.hour, time.minute, longitude, gy, gm, gd, zone.offsetHours);
@@ -402,7 +446,7 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     { label: "月柱", gan: ec.getMonthGan(), zhi: ec.getMonthZhi(), shiShen: ec.getMonthShiShenGan(), naYin: ec.getMonthNaYin(), hides: ec.getMonthHideGan(), kong: ec.getMonthXunKong() },
     { label: "日柱", gan: ec.getDayGan(), zhi: ec.getDayZhi(), shiShen: "日主", naYin: ec.getDayNaYin(), hides: ec.getDayHideGan(), kong: ec.getDayXunKong() },
     { label: "时柱", gan: ec.getTimeGan(), zhi: ec.getTimeZhi(), shiShen: ec.getTimeShiShenGan(), naYin: ec.getTimeNaYin(), hides: ec.getTimeHideGan(), kong: ec.getTimeXunKong() },
-  ];
+  ].filter((p) => !(timeUnknown && p.label === "时柱")); // 时辰不详就整个去掉时柱
 
   const pillars: Pillar[] = raw.map((p) => {
     const isDayMaster = p.label === "日柱";
@@ -504,7 +548,8 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     zodiac: birthLunar.getYearShengXiao(),
     solarDate: `${birthYmd.y} 年 ${birthYmd.m} 月 ${birthYmd.d} 日`,
     lunarDate: `${birthLunar.getYearInChinese()}年${birthLunar.getMonthInChinese()}月${birthLunar.getDayInChinese()}`,
-    birthTime: input.birthTime,
+    // 没有时辰就不要编一个出来。界面据此不显示钟表时间。
+    birthTime: timeUnknown ? "" : input.birthTime,
 
     elements,
     strongest: sorted[0]?.element ?? "土",
@@ -517,14 +562,16 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     relations,
 
     taiYuan: ec.getTaiYuan(),
-    mingGong: ec.getMingGong(),
-    shenGong: ec.getShenGong(),
+    // 命宫与身宫都由**时辰**推出。时辰不详时给出它们就等于给了假数据。
+    mingGong: timeUnknown ? undefined : ec.getMingGong(),
+    shenGong: timeUnknown ? undefined : ec.getShenGong(),
 
     startAgeText: `${yun.getStartYear()} 年 ${yun.getStartMonth()} 个月起运`,
     daYun,
 
     calendar,
-    clockTime: formatClock(time.hour, time.minute),
+    // 空串表示"没有时刻" —— 界面据此整段略去钟表与真太阳时
+    clockTime: timeUnknown ? "" : formatClock(time.hour, time.minute),
     trueSolarTime,
     solarOffsetMinutes,
     birthPlace:
@@ -535,8 +582,23 @@ export function buildBaziChart(input: BaziInput): BaziChart | null {
     standardTimeZone: usedZoneName,
     trueSolarCrossedDay,
     chartDateText: crossedToText,
+
+    timeUnknown: timeUnknown || undefined,
+    timeUnknownNote: timeUnknown ? TIME_UNKNOWN_NOTE : undefined,
   };
 }
+
+/**
+ * 时辰不详时给用户看的说明。
+ *
+ * 要点是**如实**：说清少了什么、为什么少了、精确到什么程度。
+ * 不淡化（"影响不大"是假话：时柱牵扯格局、子女宫、晚年运），
+ * 也不夸大（年月日三柱本身就决定了大半张盘，仍有参考价值）。
+ */
+export const TIME_UNKNOWN_NOTE =
+  "出生时辰不详，本盘只排年、月、日三柱。日主强弱、五行分布、格局、大运起运岁数都是以三柱推算的，" +
+  "与完整四柱会有出入；时柱所主的子女缘分与晚年运势无从判断，" +
+  "命宫、身宫也因缺时辰而不列。若日后能问到确切时辰，重新排一次会更准。";
 
 /** 把排好的盘压成一段文字，喂给模型做解读用 —— 它据此解读，不必自己推算。 */
 export function chartToPrompt(chart: BaziChart): string {
@@ -579,8 +641,9 @@ export function chartToPrompt(chart: BaziChart): string {
   );
   const currentLiuNian = currentDaYun?.liuNian.find((n) => n.year === currentYear);
 
-  const timeLine =
-    chart.trueSolarTime !== undefined
+  const timeLine = chart.timeUnknown
+    ? "出生时辰不详（本盘只有年、月、日三柱，没有时柱）"
+    : chart.trueSolarTime !== undefined
       ? `钟表时间 ${chart.clockTime} → 按${chart.birthPlace}换算真太阳时 ${chart.trueSolarTime}（差 ${chart.solarOffsetMinutes} 分钟）` +
         (chart.chartDateText ? `，校正后跨日，四柱按 ${chart.chartDateText} 排定` : "")
       : `钟表时间 ${chart.clockTime}（未填出生地，未作真太阳时校正）`;
@@ -589,7 +652,9 @@ export function chartToPrompt(chart: BaziChart): string {
     `公历：${chart.solarDate}`,
     `农历：${chart.lunarDate}　生肖：${chart.zodiac}`,
     `出生时间：${timeLine}`,
-    "四柱：",
+    // 表头随柱数走。写死"四柱"而只给三柱时，模型很可能自己补一个时柱出来 ——
+    // 那正是这条产品线最不能出的错。
+    chart.timeUnknown ? "三柱（缺时柱）：" : "四柱：",
     pillars,
     `日主：${chart.dayMaster}（${chart.dayMasterElement}）`,
     `五行分布：${elements}`,
@@ -598,7 +663,16 @@ export function chartToPrompt(chart: BaziChart): string {
     chart.pattern ? `格局：${chart.pattern.name} —— ${chart.pattern.note}` : "格局：未能取格",
     rel.length ? `干支关系：${rel.join("，")}` : "干支之间无合冲",
     shenSha ? `神煞：${shenSha}` : "无显著神煞",
-    `胎元${chart.taiYuan}　命宫${chart.mingGong}　身宫${chart.shenGong}`,
+    // 命宫身宫缺时辰时不列 —— 免得模型拿它们当依据写进「依据」里
+    chart.mingGong && chart.shenGong
+      ? `胎元${chart.taiYuan}　命宫${chart.mingGong}　身宫${chart.shenGong}`
+      : `胎元${chart.taiYuan}`,
+    // 时辰不详时把这件事显式写进提示词，否则模型会照着四柱的习惯去写，
+    // 甚至可能自己编一个时柱出来 —— 那正是这条产品线最不能出的错。
+    chart.timeUnknown
+      ? `**注意：本盘时辰不详，只有年、月、日三柱。** 时柱一律不要提及，也不要推测；` +
+        `涉及子女缘分、晚年运势的小节应直接说明"因缺时辰，这部分无从判断"，不要硬写。`
+      : "",
     `十神力量排行（由强到弱）：${chart.strength.groupPower.map((g) => `${g.group} ${g.percent}%`).join("，")}`,
     `起运：${chart.startAgeText}`,
     `大运：${daYun}`,

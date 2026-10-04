@@ -3,6 +3,8 @@ import { buildBaziChart } from "@/lib/bazi";
 import { MODES } from "@/lib/pricing";
 import { validateFortuneRequest } from "@/lib/validation";
 import { readOnlyGuard } from "@/lib/server/quota-guard";
+import { passSecret } from "@/lib/server/runtime";
+import { withPassCookie } from "@/lib/server/pass-cookie";
 
 /**
  * 只排盘，不解读。
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
     gender: checked.input.gender ?? "",
     calendar: checked.input.calendar === "lunar" ? "lunar" : "solar",
     lunarLeap: checked.input.lunarLeap === "true",
+    timeUnknown: checked.input.timeUnknown === "true",
     province: checked.input.province || undefined,
     city: checked.input.city || undefined,
   });
@@ -61,5 +64,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true, chart });
+  const res = NextResponse.json({ success: true, chart });
+
+  // 从账户侧补签的凭证要写回，否则每次回看历史都得再查一次库。
+  // 这不涉及消费，是纯收益。
+  const secret = passSecret();
+  if (secret && guard.reissued) withPassCookie(res, guard.reissued, secret);
+
+  return res;
 }

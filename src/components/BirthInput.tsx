@@ -103,6 +103,8 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
 
   const time = value.birthTime || "";
   const isLateZi = /^23:/.test(time);
+  /** 时辰不详：勾了那个复选框就等于宣告"只排三柱" */
+  const timeUnknown = value.timeUnknown === "true";
   const approximate = isApproximate(city);
 
   return (
@@ -196,22 +198,53 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
 
       {/* 出生时刻 */}
       <div>
-        <label className={LABEL_CLS} htmlFor="birth-time">
-          出生时刻<span className="text-vermillion-400 ml-1">*</span>
-        </label>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+          <label className={LABEL_CLS} htmlFor="birth-time">
+            出生时刻{timeUnknown ? null : <span className="text-vermillion-400 ml-1">*</span>}
+          </label>
+          {/*
+            「不知道」是常态，不是异常。很多人问过父母也问不出来，
+            此前时辰必填，这批人就卡在这一步走了 —— 而他们本来是最愿意付钱的一批
+            （愿意付费算命的人，往往正是对命运有疑问的人）。
+
+            勾上之后**不猜时辰**，只排年、月、日三柱。刻意不提供"按子时算"
+            之类的兜底：时柱一错，时柱本身、五行分布、身强身弱、格局、
+            大运起运岁数全跟着错。宁可少给一柱，也不能给一柱假的。
+          */}
+          <label className="flex items-center gap-1.5 text-xs text-paper-100/60 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={timeUnknown}
+              onChange={(e) => onChange("timeUnknown", e.target.checked ? "true" : "")}
+              className="accent-gold-400 w-3.5 h-3.5"
+            />
+            不确定，只排年月日
+          </label>
+        </div>
         <input
           id="birth-time"
           type="time"
-          required
-          value={time}
+          required={!timeUnknown}
+          disabled={timeUnknown}
+          value={timeUnknown ? "" : time}
           onChange={(e) => onChange("birthTime", e.target.value)}
-          className={SELECT_CLS}
+          className={`${SELECT_CLS} ${timeUnknown ? "opacity-40 cursor-not-allowed" : ""}`}
         />
-        <p className={HINT_CLS}>
-          填到分钟。时辰的边界是两小时，差一个时辰就是差四分之一的盘 ——
-          所以宁可填个大概的时刻，也不要凭印象挑一个时辰。
-        </p>
-        {isLateZi && (
+        {timeUnknown ? (
+          <div className="text-xs leading-relaxed mt-2 rounded border border-gold-300/15 bg-mystic-900/40 px-3 py-2">
+            <p className="text-paper-100/65 mb-1">只排年、月、日三柱，时柱留空。</p>
+            <p className="text-paper-100/50">
+              日主强弱、五行分布、格局、大运起运岁数会以三柱推算，与完整四柱略有出入；
+              时柱所主的子女缘分与晚年运势无从判断。日后问到确切时辰，重新排一次会更准。
+            </p>
+          </div>
+        ) : (
+          <p className={HINT_CLS}>
+            填到分钟。时辰的边界是两小时，差一个时辰就是差四分之一的盘 ——
+            所以宁可填个大概的时刻，也不要凭印象挑一个时辰。
+          </p>
+        )}
+        {!timeUnknown && isLateZi && (
           <p className="text-gold-400/70 text-xs mt-2 leading-relaxed">
             23 点后属「晚子时」。本站取子平通行口径：<span className="text-paper-100/70">日柱仍按当天算</span>，
             时柱按次日的日干起。若你习惯另一种算法（过了 23 点即换日），把时刻填成 00:30 再排一次即可对照。
