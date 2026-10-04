@@ -100,7 +100,7 @@ export default function PaymentModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
-            className="relative mystic-card rounded-xl p-8 max-w-sm w-full text-center my-auto"
+            className="relative mystic-card rounded-xl p-8 max-w-md w-full text-center my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {step === "pay" && (
@@ -117,10 +117,12 @@ export default function PaymentModal({
                   <span className="amount">{price}</span>
                 </div>
 
-                <div className="bg-white rounded-lg p-3 mb-5 mx-auto flex flex-col items-center">
-                  <p className="text-gray-700 text-xs mb-2 font-medium">支付宝扫码支付</p>
+                <div className="bg-white rounded-lg p-3 mb-4 mx-auto flex flex-col items-center">
+                  <p className="text-gray-800 text-xs mb-2 font-semibold">
+                    请用「支付宝」扫一扫
+                  </p>
                   {qrFailed ? (
-                    <div className="w-52 h-64 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
+                    <div className="w-60 h-60 flex items-center justify-center rounded border border-dashed border-gray-300 px-4 text-center">
                       <span className="text-gray-400 text-xs leading-relaxed">
                         收款码暂未就绪
                         <br />
@@ -129,19 +131,37 @@ export default function PaymentModal({
                     </div>
                   ) : (
                     <>
-                      {/* 收款码是整张竖版海报（1260×1890）。强塞进正方形会让二维码缩到约 100px、
-                          扫不动，所以只固定宽度、按原始比例显示（渲染约 208×312，二维码约 180px）。 */}
+                      {/*
+                        收款码是纯二维码方图（600×600）。
+
+                        此前用的是支付宝导出的整张竖版海报（1260×1890），里面
+                        二维码只占一块，缩到 208px 宽之后二维码实际只有约 180px ——
+                        拿手机对着电脑屏幕扫很勉强。裁成方图之后，同样的宽度下
+                        二维码变成约 260px，大了 44%。
+
+                        裁图还顺带去掉两样东西：海报下方印的收款人真名与地区
+                        （写在这里等于向所有访客公开），以及那句"推荐使用支付宝"
+                        —— 它反而让用户以为微信也能扫。
+                      */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src="/qrcode.jpg"
                         alt="支付宝收款码"
-                        className="w-52 h-auto rounded"
+                        className="w-60 h-60 sm:w-64 sm:h-64 rounded"
                         onError={() => setQrFailed(true)}
                       />
-                      <p className="text-gray-400 text-[10px] mt-2">长按识别或截图扫描</p>
+                      <p className="text-gray-500 text-[11px] mt-2 font-medium">
+                        金额请手动输入 ¥{price}
+                      </p>
                     </>
                   )}
                 </div>
+
+                {/* 微信扫不了支付宝的码，而多数人第一反应是打开微信 ——
+                    不讲清楚的话，用户扫完什么都没发生，就卡在这里了。 */}
+                <p className="text-paper-100/45 text-[11px] leading-relaxed mb-4">
+                  微信无法识别支付宝收款码，请务必用支付宝扫
+                </p>
 
                 {/*
                   交付说明。
@@ -150,9 +170,10 @@ export default function PaymentModal({
                   手上什么都没有，得先找站长拿激活码。此前这里只有两行浅灰小字，
                   用户很可能直接点下面的按钮、然后对着一个空输入框发呆。
                   
-                  所以改成编号步骤，并把"需要你主动发邮件"这一步明确指出来 ——
-                  支付宝个人收款码不带用户信息，站长无法主动联系付款人，
-                  只能由用户来联系。这件事必须讲在前面，而不是等他卡住了再说。
+                  所以改成编号步骤，并把两件事明确指出来：
+                  1. 需要用户主动发邮件 —— 支付宝个人收款码不带用户信息，
+                     站长无法主动联系付款人，只能由用户来联系
+                  2. 金额要手动输入 —— 个人收款码不带金额，用户可能输错或忘输
                 */}
                 <div className="text-left rounded-lg border border-gold-300/20 bg-mystic-900/40 px-4 py-3.5 mb-5">
                   <p className="text-paper-100/70 text-xs mb-2.5 tracking-wider">
@@ -160,7 +181,8 @@ export default function PaymentModal({
                   </p>
                   <ol className="space-y-2">
                     {[
-                      "扫码付款",
+                      "用支付宝扫上方收款码",
+                      `手动输入金额 ¥${price}，完成支付`,
                       "把付款截图发到下面这个邮箱",
                       "收到激活码后，点下方按钮输入",
                     ].map((text, i) => (
