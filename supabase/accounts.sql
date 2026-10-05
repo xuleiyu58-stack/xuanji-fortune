@@ -28,7 +28,7 @@ revoke all on public.account_entitlements from anon, authenticated;
 --
 -- 只存解读正文与当次输入。出生信息属于个人敏感信息，但它是这条记录
 -- 不可分割的一部分 —— 没有它，用户回看时无法知道这份解读对应哪个盘。
--- 隐私政策里已如实说明这一点，用户也可随时删除单条记录。
+-- 隐私政策里已如实说明这一点（"账号与云端记录"一节），用户也可随时删除单条记录。
 create table if not exists public.readings (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references auth.users(id) on delete cascade,
