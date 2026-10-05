@@ -128,7 +128,16 @@ function clientIpOf(req: NextRequest): string {
 async function canPreview(req: NextRequest): Promise<boolean> {
   const existing = req.cookies.get(DEVICE_COOKIE)?.value;
   const deviceId = existing ?? randomUUID();
-  const ipHash = hashIp(clientIpOf(req));
+
+  // 缺盐时 hashIp 会抛。这里只回答"能不能试读"，算不出就按不能 ——
+  // 让调用方退回它本来就要回的 403，而不是抛出一个带堆栈的 500。
+  let ipHash: string;
+  try {
+    ipHash = hashIp(clientIpOf(req));
+  } catch (err) {
+    console.error("IP 哈希失败:", err);
+    return false;
+  }
 
   // 自己验一遍凭证。刻意不复用 quotaGuard 的结果：它在放行路径上会
   // "先占消费台账的坑"，而试读是另一条路径，不该碰那张表。

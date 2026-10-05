@@ -56,11 +56,21 @@ export async function POST(req: NextRequest) {
   }
 
   // 按 IP 限次，成功与失败都计数 —— 只统计成功会让失败路径变成免费的爆破靶场
-  const ipHash = hashIp(
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      req.headers.get("x-real-ip") ||
-      "0.0.0.0"
-  );
+  let ipHash: string;
+  try {
+    ipHash = hashIp(
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("x-real-ip") ||
+        "0.0.0.0"
+    );
+  } catch (err) {
+    // 缺盐时算不出哈希就限不了次 —— 这是核销入口，宁可 503 也不能放开爆破
+    console.error("IP 哈希失败:", err);
+    return NextResponse.json(
+      { success: false, error: "服务暂时不可用，请稍后再试" },
+      { status: 503 }
+    );
+  }
   const redeemKey = `redeem:${ipHash}`;
 
   try {

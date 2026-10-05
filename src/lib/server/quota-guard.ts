@@ -153,7 +153,25 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
   const existing = req.cookies.get(DEVICE_COOKIE)?.value;
   const deviceId = existing ?? randomUUID();
   const isNewDevice = existing === undefined;
-  const ipHash = hashIp(clientIp(req));
+
+  /** 读不到用量 / 算不出 IP 哈希时一律拒绝，理由都按"服务端故障"回 503。 */
+  const unavailable = (message: string): GuardOutcome => ({
+    ok: false,
+    decision: { allow: false, status: 503, reason: "global", message },
+    deviceId,
+    ipHash: "",
+    isNewDevice,
+    response: NextResponse.json({ success: false, error: message }, { status: 503 }),
+  });
+
+  // 缺盐时 hashIp 会抛 —— 那是部署少配了环境变量，不该变成一个带堆栈的 500。
+  let ipHash: string;
+  try {
+    ipHash = hashIp(clientIp(req));
+  } catch (err) {
+    console.error("IP 哈希失败:", err);
+    return unavailable("服务暂时不可用，请稍后再试");
+  }
 
   // 有 cookie 就直接用它（不查库）；没有才凭登录态从账户侧补一张。
   // 这正是账号体系解决的那个问题：清了浏览器数据也不会丢掉会员。
@@ -341,7 +359,21 @@ export async function readOnlyGuard(
   const existing = req.cookies.get(DEVICE_COOKIE)?.value;
   const deviceId = existing ?? randomUUID();
   const isNewDevice = existing === undefined;
-  const ipHash = hashIp(clientIp(req));
+
+  // 缺盐时 hashIp 会抛 —— 那是部署少配了环境变量，不该变成一个带堆栈的 500。
+  let ipHash: string;
+  try {
+    ipHash = hashIp(clientIp(req));
+  } catch (err) {
+    console.error("IP 哈希失败:", err);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { success: false, error: "服务暂时不可用，请稍后再试" },
+        { status: 503 }
+      ),
+    };
+  }
 
   const { entitlement, reissued } = await ensurePassCookie(req);
 

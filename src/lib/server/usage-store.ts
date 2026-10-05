@@ -1,5 +1,5 @@
 import type { UsageCounts } from "@/lib/access";
-import { admin, allowMemoryFallback, envValue } from "@/lib/server/runtime";
+import { admin, allowMemoryFallback, envValue, isSupabaseConfigured } from "@/lib/server/runtime";
 import { createHash } from "node:crypto";
 
 /**
@@ -37,8 +37,39 @@ export const previewGlobalKey = () => `${PREVIEW_PREFIX}global`;
 export const previewDeviceKey = (deviceId: string) => `${PREVIEW_PREFIX}${deviceKey(deviceId)}`;
 export const previewIpKey = (ipHash: string) => `${PREVIEW_PREFIX}${ipKey(ipHash)}`;
 
+/**
+ * IP 哈希用的盐。
+ *
+ * 无盐的 sha256(ip) 是**可以还原的**：IPv4 空间只有 2^32，把全网段跑一遍
+ * 建张表就能反查。所以这在隐私上等于明文存 IP —— 而隐私政策里
+ * 对用户的承诺恰恰是"由哈希反推不回你的 IP"。
+ *
+ * 盐本身也构成了另一层防护：没有它，拿到数据库也没法离线穷举。
+ * 独立变量优先，没配就复用 PASS_SECRET —— 少一个要记的东西，
+ * 而"再加一个必填环境变量"正是最容易让部署悄悄降级的那种要求。
+ */
+export function ipHashSalt(): string | null {
+  return envValue("IP_HASH_SALT", "PASS_SECRET") ?? null;
+}
+
+/**
+ * 换盐会让所有 `ip:*` 计数键变掉，当日 IP 那道闸门随之重置一次。
+ * 可以接受：闸门本来就按自然日重置，重置一次不构成漏洞。
+ */
 export function hashIp(ip: string): string {
-  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+  const salt = ipHashSalt();
+  if (!salt) {
+    // 没有盐就等于无盐哈希。开发环境不落库，用一个固定串足够；
+    // 生产环境（或已配 Supabase）宁可报错 503，也不能把用户的 IP
+    // 变成一张彩虹表就能反查的东西 —— 那是隐私政策里承诺过的事。
+    if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+      throw new Error(
+        "IP 哈希密钥未配置：无法安全地限流。请在环境变量里配置 PASS_SECRET。"
+      );
+    }
+    return createHash("sha256").update(`dev-unsalted:${ip}`).digest("hex").slice(0, 32);
+  }
+  return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 32);
 }
 
 export function dailyGlobalBudget(): number {

@@ -53,7 +53,16 @@ export async function POST(req: NextRequest) {
   const email = raw.trim().toLowerCase();
 
   // 发信限次：成功与失败都计数，否则失败路径就是免费的轰炸通道
-  const key = `otp:${hashIp(clientIp(req))}`;
+  let key: string;
+  try {
+    key = `otp:${hashIp(clientIp(req))}`;
+  } catch (err) {
+    console.error("IP 哈希失败:", err);
+    return NextResponse.json(
+      { success: false, error: "服务暂时不可用，请稍后再试" },
+      { status: 503 }
+    );
+  }
   try {
     const used = await readCount(key);
     if (used >= SEND_IP_DAILY_LIMIT) {
