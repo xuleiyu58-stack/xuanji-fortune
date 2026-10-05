@@ -30,6 +30,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/*
+ * 首页那个星座装饰在手机上按 120vw 画（见下方 max-width:640px 那条），左右各多出
+ * 约 39px；粒子里也有几颗飘到了视口外。装饰溢出本身无害，但它会把页面的
+ * scrollWidth 撑到 444，而页头是 `width:100%` 的固定定位元素 —— 它按被撑宽的
+ * 视口算宽度，于是页头比屏幕宽 54px、右侧的按钮被切掉。
+ *
+ * 所以这条不是"防横向滚动"的保险，而是**尺寸基准的兜底**：内容盒必须等于视口宽，
+ * 否则所有按百分比算宽度的元素都会跟着一起错。
+ *
+ * 用 clip 而不是 hidden：hidden 会把 html 变成滚动容器，可能让 sticky/锚点
+ * 滚动出现意外；clip 只裁不滚，也不改变包含块。
+ */
+html {
+  overflow-x: clip;
+}
+
 a, button, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 3px; }
 

@@ -53,3 +53,10 @@ code-export*.txt
 # "paths are ignored"）。忽略规则宁可窄一点：宁可漏忽略一个文件，也不要
 # 静默地不让一个该提交的文件进仓库。
 /video/
+
+# 截图工具的产物与浏览器临时目录。
+# scripts/shot.mjs 把照片写进 _shots/，那些是**给我自己看**的中间产物，
+# 不是要交付的东西 —— 交付的截图会另存到 docs/ 里。
+/scripts/_shots/
+/.chrome-tmp/
+__pycache__/
