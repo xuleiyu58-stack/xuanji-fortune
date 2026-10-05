@@ -1,15 +1,19 @@
 [
   { "wait": 1500 },
 
-  { "click": "#birth-date" },
-  { "fill": { "selector": "#birth-date", "value": "1992-02-04", "delay": 190 } },
+  { "click": "select[aria-label=\"阳历年\"]" },
+  { "fill": { "selector": "select[aria-label=\"阳历年\"]", "value": "1992" } },
+  { "wait": 500 },
+
+  { "fill": { "selector": "select[aria-label=\"阳历月\"]", "value": "2" } },
+  { "wait": 400 },
+
+  { "fill": { "selector": "select[aria-label=\"阳历日\"]", "value": "4" } },
   { "wait": 700 },
 
-  { "click": "#birth-gender" },
   { "fill": { "selector": "#birth-gender", "value": "男" } },
   { "wait": 700 },
 
-  { "click": "#birth-time" },
   { "fill": { "selector": "#birth-time", "value": "07:20" } },
   { "wait": 900 },
 

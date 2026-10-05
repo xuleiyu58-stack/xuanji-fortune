@@ -253,12 +253,18 @@ try {
   }
 
   if (SCROLL_TO) {
+    /*
+     * scroll-offset：让目标**往下移**若干像素再拍。
+     * 光有 scrollIntoView(block:"start") 不够用 —— 目标会被顶到屏幕最上沿，
+     * 它上面那一行（比如想一起看的标签）就正好被切掉。
+     */
+    const SCROLL_OFFSET = Number(argOf("scroll-offset", 90));
     const r = await cdp.send("Runtime.evaluate", {
       expression: `(() => {
         const el = document.querySelector(${JSON.stringify(SCROLL_TO)});
         if (!el) return "not-found";
         el.scrollIntoView({ block: "start", behavior: "instant" });
-        window.scrollBy(0, -90); // 给上面的标题留一点边距，别贴着屏幕顶
+        window.scrollBy(0, -${SCROLL_OFFSET});
         return Math.round(window.scrollY) + "";
       })()`,
       returnByValue: true,

@@ -14,12 +14,18 @@ type RegionsModule = typeof import("@/lib/bazi/regions");
  *
  * 三处复杂度是别的表单没有的：
  *   1. **阳历/农历两套输入**，切换后字段结构完全不同；
- *   2. 农历不能复用 `<input type="date">`（那不是公历），得年月日三个下拉；
+ *   2. 两套都不能用 `<input type="date">` 糊过去：阳历那套要用它，农历没法用
+ *      （那不是公历）；而只给阳历用、农历用下拉，同一个「出生日期」就有了两副相貌 ——
+ *      所以**两套一律三个下拉**，样式与手感统一；
  *   3. 出生地是**省 → 市 → 区县**三级联动，而且只为一个用途 —— 算真太阳时。
  *
  * 关于闰月：判断某年有无闰月、某月有几天，都要问 lunar-typescript，
  * 而那个库必须留在服务端（否则会被打进浏览器包）。所以这里只列「正月…腊月」十二项，
  * 闰月靠勾选表达，合法性由服务端校验后回一句具体原因。
+ *
+ * 关于公历的月长：那个是小学算术（闰年 29 天、4/6/9/11 月 30 天），不必问库，
+ * 本文件里 `solarDayCount` 自己算。**只列当月真的存在的日子** ——
+ * 2 月里摆一个「30 日」让人选中再报错，是把校验责任推给用户。
  *
  * 关于区县：它的经度用的是所属**市**的 —— 同一地级市内各点相差通常不足 1°（4 分钟），
  * 而时辰边界是两小时。列出来是为了让人认得出自己的家，不是为了更高精度。
@@ -39,6 +45,37 @@ function lunarDayName(d: number): string {
 }
 
 const YEARS = Array.from({ length: 2100 - 1900 + 1 }, (_, i) => 1900 + i);
+
+/**
+ * 公历年份的下限。
+ *
+ * 定在 1920，有两个理由：
+ *   1. 三列并排时每列只有约 114px（430px 手机减内边距再除以三），
+ *      选项文字长一点就会被截断 —— 手机上原生下拉的截断是硬截断，不省略号。
+ *      年份表短一些，也让这一个下拉不至于长得离谱；
+ *   2. 1900 年只有 1 月够得着（月/日按"当月真的存在"来列），列出来却选不了，
+ *      是界面在骗人。
+ * 1920 年出生的人今天已逾百岁，再往前不必替他们操心。
+ */
+const SOLAR_MIN_YEAR = 1920;
+const SOLAR_MAX_YEAR = 2100;
+const SOLAR_YEARS = Array.from(
+  { length: SOLAR_MAX_YEAR - SOLAR_MIN_YEAR + 1 },
+  (_, i) => SOLAR_MIN_YEAR + i
+);
+
+/** 公历某年某月有几天。month 从 1 起算。 */
+function solarDayCount(y: number, m: number): number {
+  if (m === 2) return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28;
+  return [4, 6, 9, 11].includes(m) ? 30 : 31;
+}
+
+/** 把 `YYYY-MM-DD` 拆成三段；缺项给空串，好让下拉停在占位项上。 */
+function splitYmd(ymd: string): [string, string, string] {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec((ymd || "").trim());
+  if (!m) return ["", "", ""];
+  return [m[1], String(Number(m[2])), String(Number(m[3]))];
+}
 
 const SELECT_CLS =
   "w-full bg-mystic-800 border border-gold-300/20 rounded px-4 py-3 text-paper-100/80 focus:border-gold-300/50 focus:outline-none transition-colors";
@@ -107,6 +144,29 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
   const timeUnknown = value.timeUnknown === "true";
   const approximate = isApproximate(city);
 
+  // 阳历的年月日：从 birthDate 反解，不另存状态（理由见下面那段的注释）
+  const [solarY, solarM, solarD] = splitYmd(value.birthDate || "");
+  const solarDays = solarDayCount(Number(solarY) || SOLAR_MIN_YEAR, Number(solarM) || 1);
+  /**
+   * 写回阳历日期。
+   *
+   * 日要 clamp 到当月的天数：从 1 月 31 日改到 2 月，若不收，会写出 `1990-02-31` ——
+   * 服务端 `buildBaziChart` 的正则只校验形状、不校验月份的日数，
+   * 于是它会流进排盘库。**在源头截住，而不是指望下游每一处都记得校验。**
+   *
+   * 这里**不判"年月是否已选"**：表单初始化就给了完整日期（见 FortuneForm 的
+   * `birthDate: "1990-01-01"`），三个下拉任何时候都拼得出一个合法日期。
+   * 早先加过一个 `if (!y || !m) return;`，在 birthDate 为空时正好把每一次改动
+   * 都吞掉 —— 状态没变、下拉被弹回原位，表现为"这几个框根本改不动"。
+   */
+  const emitSolar = (y: string, m: string, d: string) => {
+    const yy = Number(y) || SOLAR_MIN_YEAR;
+    const mm = Math.min(Math.max(Number(m) || 1, 1), 12);
+    const last = solarDayCount(yy, mm);
+    const dd = Math.min(Math.max(Number(d) || 1, 1), last);
+    onChange("birthDate", `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`);
+  };
+
   return (
     <div className="space-y-6">
       {/* 历法 */}
@@ -145,17 +205,49 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
       {/* 出生日期 */}
       {calendar === "solar" ? (
         <div>
-          <label className={LABEL_CLS} htmlFor="birth-date">
+          <label className={LABEL_CLS}>
             出生日期<span className="text-vermillion-400 ml-1">*</span>
           </label>
-          <input
-            id="birth-date"
-            type="date"
-            required
-            value={value.birthDate || ""}
-            onChange={(e) => onChange("birthDate", e.target.value)}
-            className={SELECT_CLS}
-          />
+          {/*
+            这一格**不额外存 state**：年月日直接由 value.birthDate 反解，
+            选一次就写回去。自己再存一份的话，两边迟早不同步 ——
+            而出生日期是整张盘唯一的输入，它一旦和界面显示的不一致，盘就是错的。
+            初值由表单给出（FortuneForm 的 `birthDate: "1990-01-01"`），
+            所以一进来就有一个完整合法的日期可改，不存在"选到一半"的中间态。
+          */}
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              value={solarY}
+              onChange={(e) => emitSolar(e.target.value, solarM, solarD)}
+              className={SELECT_CLS}
+              aria-label="阳历年"
+            >
+              {/* 选项文字不带空格：三列并排时每列只有约 114px，「1990 年」会被截成「1990」 */}
+              {SOLAR_YEARS.map((y) => (
+                <option key={y} value={String(y)}>{y}年</option>
+              ))}
+            </select>
+            <select
+              value={solarM}
+              onChange={(e) => emitSolar(solarY, e.target.value, solarD)}
+              className={SELECT_CLS}
+              aria-label="阳历月"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={String(m)}>{m}月</option>
+              ))}
+            </select>
+            <select
+              value={solarD}
+              onChange={(e) => emitSolar(solarY, solarM, e.target.value)}
+              className={SELECT_CLS}
+              aria-label="阳历日"
+            >
+              {Array.from({ length: solarDays }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={String(d)}>{d}日</option>
+              ))}
+            </select>
+          </div>
         </div>
       ) : (
         <div>
@@ -165,7 +257,7 @@ export default function BirthInput({ value, onChange }: BirthInputProps) {
           <div className="grid grid-cols-3 gap-2">
             <select value={ly} onChange={(e) => setLy(e.target.value)} className={SELECT_CLS} aria-label="农历年">
               {YEARS.map((y) => (
-                <option key={y} value={String(y)}>{y} 年</option>
+                <option key={y} value={String(y)}>{y}年</option>
               ))}
             </select>
             <select value={lm} onChange={(e) => setLm(e.target.value)} className={SELECT_CLS} aria-label="农历月">

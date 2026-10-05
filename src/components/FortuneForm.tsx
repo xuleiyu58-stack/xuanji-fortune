@@ -30,6 +30,17 @@ export default function FortuneForm({ mode, title, description }: Props) {
   const [formData, setFormData] = useState<Record<string, string>>({
     calendar: "solar",
     lunarLeap: "false",
+    /*
+     * 给出生日期一个初值。
+     *
+     * 两个理由，第二个是硬性的：
+     *   1. 农历那三个下拉本来就默认停在 1990 年正月初一，阳历这边空着，两套又不对称了；
+     *   2. 阳历的年月日是**从 birthDate 反解**出来的（不另存 state）。birthDate 为空时，
+     *      三个下拉会停在选项列表的首项（1901 年 1 月 1 日），而用户一改年份，
+     *      写回去的值就不等于他看到的那个组合 —— 下拉会被 React 弹回原位，看着像"改不动"。
+     *      给一个真实初值，年月日就始终是同一个整体，不存在"选到一半"的中间态。
+     */
+    birthDate: "1990-01-01",
   });
   const [result, setResult] = useState<string | null>(null);
   const [chart, setChart] = useState<BaziChartData | null>(null);
