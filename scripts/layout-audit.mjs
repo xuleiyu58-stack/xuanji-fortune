@@ -63,6 +63,16 @@ if (!preset) {
 }
 const WIDTH = Number(argOf("width", preset.w));
 const HEIGHT = Number(argOf("height", preset.h));
+/**
+ * --scale：像素密度倍数。手机档用 3，因为真机就是 3 倍密度，按 1 倍拍下来
+ * 放到剪映里字是糊的。它只改每 CSS 像素对应几个物理像素，**不改 CSS 宽度** ——
+ * 与早先那个 dsf 的坑（把 390 的视口算成 130）完全是两回事。
+ */
+const SCALE = Number(argOf("scale", 1));
+/** --scroll-to：截图前滚到某个选择器（拍"会得到什么"那一段要用）。 */
+const SCROLL_TO = argOf("scroll-to", "");
+/** --click：截图前先点一下某个选择器（折叠的内容要先展开才拍得到）。 */
+const CLICK = argOf("click", "");
 const URL_ = argOf("url", "https://xuanji-fortune-sage.vercel.app");
 const PATH = argOf("path", "/");
 const target = URL_.replace(/\/$/, "") + PATH;
@@ -77,6 +87,18 @@ if (!exe) {
 const profile = mkdtempSync(join(tmpdir(), "xj-audit-"));
 const PORT = 9333 + Math.floor(Math.random() * 400);
 
+/**
+ * 不要在这里加 `--window-size`。
+ *
+ * 本机两个浏览器在无头模式下都有**最小视口宽**：Chrome 512、Edge 504
+ * （实测自检页：请求 360 的窗口，Chrome 的 innerWidth 是 512，Edge 是 504，
+ * 而输出的 PNG 却按 360 存 —— 右边永远缺一块）。换浏览器解决不了，
+ * 这是两者的共同下限，不是 Chrome 的毛病。
+ *
+ * 真正能绕过去的是下面那句 Emulation.setDeviceMetricsOverride：
+ * 它由浏览器内核直接改设备度量，不受窗口下限约束。窄视口一律走这条路，
+ * 截图与量尺寸都用它，别再用命令行 --window-size 拍手机档。
+ */
 const chrome = spawn(
   exe,
   [
@@ -183,7 +205,9 @@ try {
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width: WIDTH,
     height: HEIGHT,
-    deviceScaleFactor: 1,
+    // --scale 只影响**像素密度**（手机屏是 3 倍密度，按 1 倍拍出来字是糊的），
+    // 不改变 CSS 宽度 —— 所以它跟早先那个 dsf 的坑不是一回事。
+    deviceScaleFactor: SCALE,
     mobile: preset.mobile,
   });
   if (preset.mobile) {
@@ -207,6 +231,45 @@ try {
 
   const res = await cdp.send("Runtime.evaluate", { expression: MEASURE, returnByValue: true });
   const data = JSON.parse(res.result.value);
+
+  // 滚动要在"量尺寸"之后做：量的是整页布局，与滚动位置无关，
+  // 但截图必须在滚动之后，否则拍到的还是首屏。
+  if (CLICK) {
+    const r = await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const el = document.querySelector(${JSON.stringify(CLICK)});
+        if (!el) return "not-found";
+        el.click();
+        return "clicked";
+      })()`,
+      returnByValue: true,
+    });
+    if (r.result.value === "not-found") {
+      console.error(`⚠ 没找到选择器 ${CLICK}`);
+    } else {
+      console.log(`已点击          : ${CLICK}`);
+      await sleep(900);
+    }
+  }
+
+  if (SCROLL_TO) {
+    const r = await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const el = document.querySelector(${JSON.stringify(SCROLL_TO)});
+        if (!el) return "not-found";
+        el.scrollIntoView({ block: "start", behavior: "instant" });
+        window.scrollBy(0, -90); // 给上面的标题留一点边距，别贴着屏幕顶
+        return Math.round(window.scrollY) + "";
+      })()`,
+      returnByValue: true,
+    });
+    if (r.result.value === "not-found") {
+      console.error(`⚠ 没找到选择器 ${SCROLL_TO}，截图仍是当前位置`);
+    } else {
+      console.log(`已滚动到        : ${SCROLL_TO}（scrollY=${r.result.value}）`);
+      await sleep(900); // 等滚动触发的入场动画落定
+    }
+  }
 
   // 顺带截图。**必须在这一条路径上截** —— 见文件末尾关于最小视口宽的说明。
   const shotPath = argOf("shot", "");

@@ -60,3 +60,9 @@ code-export*.txt
 /scripts/_shots/
 /.chrome-tmp/
 __pycache__/
+
+# 视频合成的临时工作目录。
+# ffmpeg 的 drawtext 里字体路径**不能带 `C:`**（冒号是选项分隔符），
+# 所以字体先拷到 .tmp/ 再用相对路径引用。字体是系统里现成的，
+# 脚本发现缺失会自己再拷一次，所以这里不该有东西进仓库。
+/.tmp/

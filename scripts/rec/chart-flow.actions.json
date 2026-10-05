@@ -1,0 +1,23 @@
+[
+  { "wait": 1500 },
+
+  { "click": "#birth-date" },
+  { "fill": { "selector": "#birth-date", "value": "1992-02-04", "delay": 190 } },
+  { "wait": 700 },
+
+  { "click": "#birth-gender" },
+  { "fill": { "selector": "#birth-gender", "value": "男" } },
+  { "wait": 700 },
+
+  { "click": "#birth-time" },
+  { "fill": { "selector": "#birth-time", "value": "07:20" } },
+  { "wait": 900 },
+
+  { "click": "button[type=\"submit\"]" },
+
+  { "waitFor": { "selector": "h2", "timeout": 60000, "then": 1400 } },
+  { "wait": 2600 },
+
+  { "scrollBy": { "y": 440, "ms": 1500 } },
+  { "wait": 2800 }
+]
