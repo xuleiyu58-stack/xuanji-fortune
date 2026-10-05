@@ -7,12 +7,13 @@
   · 中文字形完全可控，不会有生成式模型常见的乱码字。
 
 为什么不用 ffmpeg 直接读 PNG 序列：
-  逐帧写盘再让 ffmpeg 读，30 秒的视频要写 900 个文件。改成把 numpy 数组
+  逐帧写盘再让 ffmpeg 读，30 秒的视频要写上千个文件。改成把 numpy 数组
   按原始 RGB 喂进 ffmpeg 的 stdin，一个临时文件都不需要。
 
-关于版式：主区是 y=430 到 y=1870，三段（四柱 / 五行 / 解读）**各占满整个主区**、
-互相淡入淡出。早先的版本让三段同时渲染在固定坐标上，结果解读卡片直接盖在四柱上 ——
-竖屏只有一条时间轴，同一时刻只该有一件事在发生。
+关于版式：主区是 y=430 到 y=1870，四段（出生信息 / 四柱 / 五行 / 解读）**各占满主区**。
+所有"谁在场、在场多少"都由 stage_alpha() 一处决定 —— 换场的重叠与否是这个函数
+能直接算出来的事，不该靠人眼逐帧看，也不该靠去数像素变了多少（淡入刚开始时
+整张卡只变了几个灰阶，"变化的像素比例"就已经是满格了，那个指标分辨不出强弱）。
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ FPS = 30
 
 CARD_X0, CARD_X1 = 70, W - 70          # 卡片左右边距
 MAIN_TOP, MAIN_BOT = 430, 1870         # 主内容区（上下留出边距）
+
 BG = (10, 12, 20)          # 近黑的靛蓝，和网站夜色底一致
 PANEL = (18, 21, 33)       # 卡片底
 PANEL_EDGE = (58, 50, 32)  # 卡片描边（暗金）
@@ -57,6 +59,76 @@ def font(size: int, serif: bool = True) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(SERIF if serif else SANS), size)
 
 
+# ---------------------------------------------------------------- 时间轴
+
+T_TITLE = 0.0     # 标题淡入，之后一直在
+T_FORM = 0.8      # 出生信息卡
+T_FORM_END = 3.0
+T_CHART = 3.2     # 四柱卡
+T_PILLAR = 3.9    # 四柱逐列出场
+T_HIDDEN = 6.9    # 藏干浮现（四柱字变暗）
+T_ELEM = 10.4     # 五行分布
+T_ELEM_END = 16.4
+T_READ = 17.0     # 解读，逐字打出
+T_READ2 = 23.0    # 依据段
+T_READ_END = 28.6 # 解读退场
+T_CTA = 29.4      # 落版
+TOTAL = 34.6
+
+# 换场的分寸：EDGE 是淡出/淡入各自占的时间，GAP 是两者之间的空档。
+# 早先 GAP=0 且两段重叠，结果四柱卡还没退干净，五行卡就压上来 ——
+# 上一屏的「四柱」两个字浮在「五行分布」上面。玄学内容本来就要求"看得准"，
+# 画面上出现重影，观众第一反应是"这东西坏了吧"。
+EDGE = 0.45
+GAP = 0.15
+
+# 每个区的纵向布局。写成常量而不是散在函数里，是因为"四段各占满主区"
+# 这件事必须能一眼核对 —— 早先版本正是靠散落的字面量把解读叠到了四柱上。
+FOOTER_Y = 1695   # 「四柱由程序按节气推算」那句话的位置，四段共用
+
+FORM_TOP, FORM_H = 800, 620           # 出生信息卡
+CHART_TOP, CHART_H = 520, 1040        # 四柱卡
+ELEM_TOP, ELEM_H = 620, 900           # 五行卡
+READ_TOP, READ_H = 500, 1100          # 解读卡
+COL_W = (CARD_X1 - CARD_X0) // 4
+
+# 四段各自"出现→退场"的时间点。stage_alpha() 用它们算在场程度。
+STAGES = ("form", "chart", "elem", "read")
+STAGE_WINDOWS = {
+    "form": (T_FORM, T_FORM_END),
+    "chart": (T_CHART, T_ELEM - EDGE - GAP),
+    "elem": (T_ELEM, T_READ - EDGE - GAP),
+    "read": (T_READ, T_READ_END),
+}
+
+
+def stage_alpha(t: float) -> dict[str, float]:
+    """每一屏在这一刻的在场程度。**所有绘制都必须用这里的值**。
+
+    集中在一处是为了让"同一时刻只能有一屏在画"成为**可计算**的性质：
+    把 t 从 0 走到落版，任意时刻各段透明度之和必须 ≤ 1 —— 否则画面上就会出现
+    两屏叠字（用户成片里「四柱」压着「五行分布」就是这么来的）。
+    光靠肉眼看帧是看不全的，靠比像素也不可靠，只有这一个函数说了算。
+    """
+    out: dict[str, float] = {}
+    for name in STAGES:
+        start, end = STAGE_WINDOWS[name]
+        out[name] = between(t, start, end, edge=EDGE)
+    return out
+
+
+def max_total_alpha(step: float = 0.01) -> tuple[float, float]:
+    """扫描整条时间轴，返回（各段叠加的最大值, 取到最大值的时刻）。"""
+    worst, worst_t = 0.0, 0.0
+    t = 0.0
+    while t <= T_CTA:
+        total = sum(stage_alpha(t).values())
+        if total > worst:
+            worst, worst_t = total, t
+        t += step
+    return worst, worst_t
+
+
 # ---------------------------------------------------------------- 时间轴工具
 
 
@@ -79,6 +151,8 @@ def fade(t: float, start: float, dur: float) -> float:
 
 def between(t: float, start: float, end: float, edge: float = 0.35) -> float:
     """一段"出现→保持→消失"的不透明度曲线。"""
+    if end <= start:
+        return 0.0
     return min(fade(t, start, edge), 1 - fade(t, end - edge, edge))
 
 
@@ -251,42 +325,10 @@ VERDICT_DETAIL = (
     "偏偏火木最弱，所以命主的课题不是「不够强」，而是「力气往哪儿使」。"
 )
 
-# ---------------------------------------------------------------- 时间轴
-
-T_TITLE = 0.0     # 标题淡入，之后一直在
-T_FORM = 0.8      # 出生信息卡
-T_FORM_END = 3.0
-T_CHART = 3.2     # 四柱卡
-T_PILLAR = 3.9    # 四柱逐列出场
-T_HIDDEN = 6.9    # 藏干浮现（四柱字变暗）
-T_ELEM = 9.8      # 五行分布
-T_ELEM_END = 15.8
-T_READ = 16.2     # 解读，逐字打出
-T_READ2 = 22.2    # 依据段
-T_READ_END = 28.0 # 解读退场
-T_CTA = 28.8      # 落版
-TOTAL = 34.0
-
-# 每个区的纵向布局。写成常量而不是散在函数里，是因为"三段各占满主区"
-# 这件事必须能一眼核对 —— 早先版本正是靠散落的字面量把解读叠到了四柱上。
-FOOTER_Y = 1695   # 「四柱由程序按节气推算」那句话的位置，三段共用
-
-# 出生信息卡
-FORM_TOP, FORM_H = 800, 620
-
-# 四柱卡
-CHART_TOP, CHART_H = 520, 1040
-COL_W = (CARD_X1 - CARD_X0) // 4
-
-# 五行卡
-ELEM_TOP, ELEM_H = 620, 900
-
-# 解读卡
-READ_TOP, READ_H = 500, 1100
-
 
 def render_frame(t: float) -> Image.Image:
     img = new_canvas()
+    a = stage_alpha(t)
 
     # 背景：缓慢漂移的同心圆环，让静止画面不至于死板
     cx, cy = W // 2, 880
@@ -296,10 +338,10 @@ def render_frame(t: float) -> Image.Image:
     ring(img, cx, int(cy + drift), 620, GOLD_DIM, 0.045, 2)
 
     draw_header(img, t)
-    draw_form(img, t)
-    draw_chart(img, t)
-    draw_elements(img, t)
-    draw_reading(img, t)
+    draw_form(img, t, a["form"])
+    draw_chart(img, t, a["chart"])
+    draw_elements(img, t, a["elem"])
+    draw_reading(img, t, a["read"])
     draw_footer(img, t)
     draw_cta(img, t)
     return img
@@ -323,7 +365,7 @@ def draw_header(img: Image.Image, t: float) -> None:
 
 
 def draw_footer(img: Image.Image, t: float) -> None:
-    """三段共用的一句注解。
+    """四段共用的一句注解。
 
     放在这里而不是各家卡片内部，是为了让卡片换场时它**不动** ——
     动的东西太多，观众会以为换了个页面。
@@ -342,9 +384,8 @@ def draw_footer(img: Image.Image, t: float) -> None:
     )
 
 
-def draw_form(img: Image.Image, t: float) -> None:
+def draw_form(img: Image.Image, t: float, a: float) -> None:
     """出生信息卡。整条片子的钩子 —— 先给输入，再给结果。"""
-    a = between(t, T_FORM, T_FORM_END, edge=0.5)
     if a <= 0:
         return
     rounded_panel(img, (CARD_X0, FORM_TOP, CARD_X1, FORM_TOP + FORM_H), radius=40, alpha=a)
@@ -358,7 +399,7 @@ def draw_form(img: Image.Image, t: float) -> None:
         blend_text(img, (CARD_X1 - 80, y), v, font(40, serif=False), PAPER, a, anchor="ra")
 
 
-def draw_chart(img: Image.Image, t: float) -> None:
+def draw_chart(img: Image.Image, t: float, a: float) -> None:
     """四柱卡。整条片子的主角。
 
     两个动作都发生在**同一张卡里**，卡片位置不动：
@@ -366,9 +407,8 @@ def draw_chart(img: Image.Image, t: float) -> None:
       · 藏干浮现，同时四柱的大字变暗 —— 视线自然从"柱"转到"柱里藏的东西"。
     卡片不动是有意的：动了会让读者重新找位置，而这里要的是"盘在展开"。
     """
-    if t < T_CHART or t >= T_ELEM_END:
+    if a <= 0:
         return
-    a = between(t, T_CHART, T_ELEM_END, edge=0.5)
     rounded_panel(img, (CARD_X0, CHART_TOP, CARD_X1, CHART_TOP + CHART_H), radius=40, alpha=a)
 
     # 大字变暗的进度：藏干出来后，四柱本身退到背景
@@ -391,16 +431,16 @@ def draw_chart(img: Image.Image, t: float) -> None:
                 fill=(30, 26, 18),
                 edge=GOLD_DIM,
                 edge_w=2,
-                alpha=ca * 0.9,
+                alpha=ca * a * 0.9,
             )
         if i:
             vline(img, x0, CHART_TOP + 150, CHART_TOP + 790, PANEL_EDGE, a * 0.45)
 
         blend_text(
-            img, (cx, CHART_TOP + 172), p["label"], font(38, serif=False), PAPER_DIM, ca, anchor="ma"
+            img, (cx, CHART_TOP + 172), p["label"], font(38, serif=False), PAPER_DIM, ca * a, anchor="ma"
         )
         blend_text(
-            img, (cx, CHART_TOP + 226), p["gong"], font(30, serif=False), PAPER_DIM, ca * 0.7, anchor="ma"
+            img, (cx, CHART_TOP + 226), p["gong"], font(30, serif=False), PAPER_DIM, ca * a * 0.7, anchor="ma"
         )
 
         color = GOLD if p.get("is_day") else PAPER
@@ -411,7 +451,7 @@ def draw_chart(img: Image.Image, t: float) -> None:
             p["gan"],
             font(170),
             color,
-            fade(t, T_PILLAR + 0.18 + i * 0.42, 0.42) * dim,
+            fade(t, T_PILLAR + 0.18 + i * 0.42, 0.42) * dim * a,
             anchor="ma",
         )
         blend_text(
@@ -420,7 +460,7 @@ def draw_chart(img: Image.Image, t: float) -> None:
             p["zhi"],
             font(170),
             color,
-            fade(t, T_PILLAR + 0.34 + i * 0.42, 0.42) * dim,
+            fade(t, T_PILLAR + 0.34 + i * 0.42, 0.42) * dim * a,
             anchor="ma",
         )
 
@@ -429,9 +469,9 @@ def draw_chart(img: Image.Image, t: float) -> None:
         if ha > 0:
             hline(img, x0 + 24, x0 + COL_W - 24, CHART_TOP + 812, PANEL_EDGE, a * 0.6)
             blend_text(
-                img, (cx, CHART_TOP + 834), "藏干", font(28, serif=False), GOLD_DIM, ha * 0.9, anchor="ma"
+                img, (cx, CHART_TOP + 834), "藏干", font(28, serif=False), GOLD_DIM, ha * a * 0.9, anchor="ma"
             )
-            blend_text(img, (cx, CHART_TOP + 890), p["hidden"], font(46), PAPER, ha, anchor="ma")
+            blend_text(img, (cx, CHART_TOP + 890), p["hidden"], font(46), PAPER, ha * a, anchor="ma")
 
     blend_text(
         img,
@@ -444,9 +484,8 @@ def draw_chart(img: Image.Image, t: float) -> None:
     )
 
 
-def draw_elements(img: Image.Image, t: float) -> None:
+def draw_elements(img: Image.Image, t: float, a: float) -> None:
     """五行分布。条和数字一起长出来，比直接堆一堆数字有说服力。"""
-    a = between(t, T_ELEM, T_ELEM_END, edge=0.5)
     if a <= 0:
         return
     rounded_panel(img, (CARD_X0, ELEM_TOP, CARD_X1, ELEM_TOP + ELEM_H), radius=40, alpha=a)
@@ -469,26 +508,25 @@ def draw_elements(img: Image.Image, t: float) -> None:
             continue
         grow = ease_out(clamp01((t - start) / 0.9))
         y = ELEM_TOP + 232 + i * 132
-        blend_text(img, (150, y), name, font(62), ELEMENT_COLORS[name], row_a, anchor="la")
-        bar(img, bar_x, y + 26, bar_w, 26, pct / 44 * grow, ELEMENT_COLORS[name], row_a)
+        blend_text(img, (150, y), name, font(62), ELEMENT_COLORS[name], row_a * a, anchor="la")
+        bar(img, bar_x, y + 26, bar_w, 26, pct / 44 * grow, ELEMENT_COLORS[name], row_a * a)
         blend_text(
             img,
             (CARD_X1 - 80, y + 18),
             f"{val:g} · {pct}%",
             font(40, serif=False),
             PAPER,
-            row_a,
+            row_a * a,
             anchor="ra",
         )
 
 
-def draw_reading(img: Image.Image, t: float) -> None:
+def draw_reading(img: Image.Image, t: float, a: float) -> None:
     """解读。逐字打出 —— 全片唯一有信息量的一段，值得慢。
 
     逐字而不是整段淡入：整段淡入观众来不及读；逐字出现会把视线钉在字上，
     而且这种"正在生成"的节奏本身就是产品观感的一部分。
     """
-    a = between(t, T_READ, T_READ_END, edge=0.7)
     if a <= 0:
         return
     rounded_panel(img, (CARD_X0, READ_TOP, CARD_X1, READ_TOP + READ_H), radius=40, alpha=a)
@@ -498,10 +536,12 @@ def draw_reading(img: Image.Image, t: float) -> None:
     fnt = font(44, serif=False)
     reveal = clamp01((t - T_READ - 0.3) / 4.4)
     shown = VERDICT[: int(len(VERDICT) * reveal)]
-    y = draw_text_block(img, 150, READ_TOP + 210, shown, fnt, PAPER, CARD_X1 - 230, line_gap=24, alpha=a)
+    y = draw_text_block(
+        img, 150, READ_TOP + 210, shown, fnt, PAPER, CARD_X1 - 230, line_gap=24, alpha=a
+    )
 
     if t > T_READ2:
-        a2 = fade(t, T_READ2, 0.7)
+        a2 = fade(t, T_READ2, 0.7) * a
         blend_text(img, (150, y + 48), "依据", font(38, serif=False), GOLD_DIM, a2, anchor="la")
         draw_text_block(
             img,
@@ -596,6 +636,12 @@ def encode(out_path: Path, total: float, fps: int = FPS) -> None:
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "out.mp4")
     total = float(sys.argv[2]) if len(sys.argv) > 2 else TOTAL
+
+    worst, worst_t = max_total_alpha()
+    print(f"换场检查：各段透明度之和最大 {worst:.3f}（在 t={worst_t:.2f}s）")
+    if worst > 1.0 + 1e-6:
+        raise SystemExit("有两屏同时在画，先修时间轴再渲染 —— 画面上会出现叠字。")
+
     print(f"渲染 {total}s × {FPS}fps = {int(total * FPS)} 帧，{W}×{H}")
     encode(out, total)
     size_mb = out.stat().st_size / 1024 / 1024
