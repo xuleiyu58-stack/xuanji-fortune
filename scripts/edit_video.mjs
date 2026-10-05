@@ -217,12 +217,13 @@ function clipLayers(shot) {
   const caps = shot.captions ?? [];
 
   /*
-   * 字幕条要**盖满**它那一层：早先只铺了 620px 高，而字幕基线在 H-470，
-   * 结果画面里的「怎么排，怎么解」从条子上方透出来，看着像没擦干净。
-   * 高度按"字幕基线 + 上下留白"倒推，并记在 BAND_H 里给下面复用。
+   * 字幕条要**盖满**它那一层，而且**装得下"字幕 + 水印"两行**。
+   * 早先两处都错过：先只铺 620px 高、字幕基线却在 H-470，画面里的正文
+   * 从条子上方透出来；改成 520px 之后又轮到水印压到字幕上 ——
+   * 高度得按"字幕基线 + 字高 + 水印 + 上下留白"倒推，不是随手给个数。
    */
-  const BAND_H = 520;
-  const BAND_TOP = H - BAND_H - 40;
+  const BAND_H = 620;
+  const BAND_TOP = H - BAND_H;
 
   if (caps.length) {
     layers.push(
@@ -234,16 +235,16 @@ function clipLayers(shot) {
   for (const c of caps) {
     // 每条字幕各自带淡入淡出，切换时才不会"啪"地跳字
     const size = fitSize(c.text, c.size ?? 64);
-    layers.push(drawText(c.text, size, c.color ?? PAPER, c.y ?? BAND_TOP + 90, 0.35, c.from, c.to));
+    layers.push(drawText(c.text, size, c.color ?? PAPER, c.y ?? BAND_TOP + 130, 0.35, c.from, c.to));
   }
 
   /*
    * 右下角常驻水印：观众截图转发时，域名还在画面上。
-   * 位置必须**在字幕条上方**，否则会跟字幕叠在一起（成片第一版就是这样）。
+   * 位置必须**在字幕条上方**，否则会跟字幕叠在一起（成片前两版都栽在这）。
    */
   if (shot.watermark !== false) {
     layers.push(
-      drawText(shot.watermarkText ?? "xuanji-fortune-sage.vercel.app", 28, GOLD, H - 96, 0, 0, null, 0.55),
+      drawText(shot.watermarkText ?? "xuanji-fortune-sage.vercel.app", 30, GOLD, BAND_TOP + BAND_H - 78, 0, 0, null, 0.7),
     );
   }
   return layers;

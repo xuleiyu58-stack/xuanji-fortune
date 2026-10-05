@@ -1,0 +1,51 @@
+{
+  "_说明": [
+    "这是 edit_video.mjs 的剧本。改这个文件就能换片头文案、字幕、落版，不用动代码。",
+    "跑：node scripts/edit_video.mjs",
+    "时间码单位是秒。from/to 是**这一段素材内部**的时间，不是整条片子的时间。",
+    "字幕的 text 如果不在 edit_video.mjs 的 TEXT_W64 表里，字号会退回保守的 48；",
+    "想用大字号就得先在表里补一行实测宽度 —— 字号靠拍必然溢出（踩过）。"
+  ],
+
+  "title": "玄机 · 程序排盘",
+  "output": "xuanji-feed-02.mp4",
+
+  "shots": [
+    {
+      "kind": "card",
+      "label": "片头",
+      "dur": 2.6,
+      "lines": [
+        { "text": "玄 机", "size": 128, "color": "0xD4AF5A", "y": 800 },
+        { "text": "程序排盘 · AI 解读", "size": 48, "color": "0xF2EFE6", "y": 990 },
+        { "text": "四柱是算出来的，不是编的", "size": 44, "color": "0xD4AF5A", "y": 1300 }
+      ]
+    },
+
+    {
+      "kind": "clip",
+      "label": "真实录屏",
+      "src": "video/rec/01-flow.mp4",
+      "from": 1.2,
+      "dur": 14.6,
+      "captions": [
+        { "text": "填出生日期、时辰、性别", "from": 0.4, "to": 3.2 },
+        { "text": "四柱、藏干、十神，都由程序按节气推算", "from": 3.6, "to": 7.4 },
+        { "text": "不是从模板里挑一句，是按你的盘算的", "from": 7.8, "to": 11.6 },
+        { "text": "日主强弱、喜用忌神、五行分布", "from": 12.0, "to": 14.6 }
+      ]
+    },
+
+    {
+      "kind": "card",
+      "label": "落版",
+      "dur": 4.0,
+      "lines": [
+        { "text": "玄 机", "size": 112, "color": "0xD4AF5A", "y": 780 },
+        { "text": "生辰已隐去，四柱可自行核对", "size": 46, "color": "0xF2EFE6", "y": 1010 },
+        { "text": "xuanji-fortune-sage.vercel.app", "size": 40, "color": "0xD4AF5A", "y": 1220 },
+        { "text": "命理之说，信则有不信则无，仅供娱乐", "size": 30, "color": "0xF2EFE6", "y": 1620 }
+      ]
+    }
+  ]
+}
