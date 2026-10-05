@@ -1,6 +1,21 @@
 """
 把排盘界面渲染成竖屏短视频（1080×1920）。
 
+═══ 三条不许再犯的规矩 ═══
+
+1. **同一时刻只能有一屏在画。** 所有透明度都从 stage_alpha() 来，渲染前先跑
+   max_total_alpha() 自检；各段之和 > 1 直接拒绝渲染。早先两屏交叉淡化，
+   四柱卡的「四柱」两个字压在「五行分布」上面 —— 用户一眼就看出来了。
+
+2. **干支的五行用色必须等于网站里的那一套。** 权威值是
+   `src/components/BaziChart.tsx` 的 ELEMENT_COLOR。视频自己编一套颜色，
+   等于同一个产品在两个地方说法不一致。
+
+3. **盘面数据不许手抄。** 四柱、藏干、五行占比全部由 check_canonical()
+   从网站的源码里读出来核对。手抄就会抄错 —— 曾经把「戌」的藏干写成
+   "戊丁辛"，而 `src/lib/bazi/constants.ts` 里是 戊辛丁；这种错没人看得出来，
+   除非去比对，所以就让程序去比对。
+
 为什么用代码逐帧画，而不是找"AI 生成视频"：
   · 画面里的干支、五行占比必须和真实排盘一致。生成式模型最容易在这里出错 ——
     它会把"庚戌"写成看起来很像但不对的字，而这条视频的卖点恰恰是"程序算的，能核对"。
@@ -9,15 +24,11 @@
 为什么不用 ffmpeg 直接读 PNG 序列：
   逐帧写盘再让 ffmpeg 读，30 秒的视频要写上千个文件。改成把 numpy 数组
   按原始 RGB 喂进 ffmpeg 的 stdin，一个临时文件都不需要。
-
-关于版式：主区是 y=430 到 y=1870，四段（出生信息 / 四柱 / 五行 / 解读）**各占满主区**。
-所有"谁在场、在场多少"都由 stage_alpha() 一处决定 —— 换场的重叠与否是这个函数
-能直接算出来的事，不该靠人眼逐帧看，也不该靠去数像素变了多少（淡入刚开始时
-整张卡只变了几个灰阶，"变化的像素比例"就已经是满格了，那个指标分辨不出强弱）。
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -36,19 +47,25 @@ MAIN_TOP, MAIN_BOT = 430, 1870         # 主内容区（上下留出边距）
 BG = (10, 12, 20)          # 近黑的靛蓝，和网站夜色底一致
 PANEL = (18, 21, 33)       # 卡片底
 PANEL_EDGE = (58, 50, 32)  # 卡片描边（暗金）
-GOLD = (212, 175, 90)      # 主金色
+GOLD = (212, 175, 90)      # 主金色（品牌色，不表示五行）
 GOLD_DIM = (150, 124, 66)
 PAPER = (226, 224, 216)    # 正文米白
 PAPER_DIM = (150, 150, 148)
 
-# 五行配色：保留五行各自的辨识度，但整体压低饱和度，免得画面花
-ELEMENT_COLORS = {
-    "金": (222, 208, 160),
-    "木": (122, 176, 126),
-    "水": (116, 152, 200),
-    "火": (216, 130, 98),
-    "土": (196, 164, 108),
+# 五行配色 —— 与 src/components/BaziChart.tsx 的 ELEMENT_COLOR 逐字一致。
+# 传统是「木青火赤土黄金白水黑」，两边都做了去饱和以便落在墨色底上。
+# check_canonical() 会把这份表跟网站源码比一遍，漂了就报错。
+ELEMENT_COLORS: dict[str, tuple[int, int, int]] = {
+    "木": (0x7F, 0xB0, 0x8E),
+    "火": (0xC9, 0x74, 0x5A),
+    "土": (0xC2, 0xA0, 0x61),
+    "金": (0xC3, 0xC9, 0xD4),
+    "水": (0x7A, 0xA0, 0xC0),
 }
+
+REPO = Path(__file__).resolve().parent.parent
+CONSTANTS_TS = REPO / "src" / "lib" / "bazi" / "constants.ts"
+CHART_TSX = REPO / "src" / "components" / "BaziChart.tsx"
 
 FONT_DIR = Path(r"C:\Windows\Fonts")
 SERIF = FONT_DIR / "NotoSerifSC-VF.ttf"
@@ -57,6 +74,88 @@ SANS = FONT_DIR / "NotoSansSC-VF.ttf"
 
 def font(size: int, serif: bool = True) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(SERIF if serif else SANS), size)
+
+
+# ---------------------------------------------------------------- 数据核对
+
+
+def _parse_ts_map(source: str, name: str) -> dict[str, str]:
+    """从 TS 源码里抠出 `const NAME: ... = { ... };` 这种映射。
+
+    只认字符级的 `键: "值"`，不做语法分析 —— 目的只是把网站那份表读出来对照，
+    读不出来（源码结构改了）就报错退出，绝不悄悄退化成"没有这项检查"。
+    """
+    m = re.search(re.escape(name) + r"\s*(?::[^={]*)?=\s*\{(.*?)\n\};", source, re.S)
+    if not m:
+        raise SystemExit(f"读不出 {name} —— 网站源码改过结构了，视频这边得跟着改")
+    return dict(re.findall(r"([\u4e00-\u9fff]+)\s*:\s*[\"']([^\"']+)[\"']", m.group(1)))
+
+
+def check_canonical(pillars: list[dict]) -> dict:
+    """把网站当作唯一事实来源，视频只能引用、不能自带一份。
+
+    返回干支 → 五行的映射；任何不一致都直接终止渲染。
+    """
+    const_src = CONSTANTS_TS.read_text(encoding="utf-8")
+    gan_el = _parse_ts_map(const_src, "GAN_ELEMENT")
+    zhi_el = _parse_ts_map(const_src, "ZHI_ELEMENT")
+    if len(gan_el) != 10 or len(zhi_el) != 12:
+        raise SystemExit(f"干支映射读全了没？天干 {len(gan_el)} 个、地支 {len(zhi_el)} 个")
+
+    hm = re.search(r"ZHI_HIDE_GAN[^=]*=\s*\{(.*?)\n\};", const_src, re.S)
+    if not hm:
+        raise SystemExit("读不出 ZHI_HIDE_GAN")
+    zhi_hide = {
+        k: re.findall(r"[\u4e00-\u9fff]", v)
+        for k, v in re.findall(r"([\u4e00-\u9fff]+)\s*:\s*\[([^\]]*)\]", hm.group(1))
+    }
+
+    # 藏干核对：这是手抄最容易错的地方，而且错了没人看得出来
+    for p in pillars:
+        want = zhi_hide.get(p["zhi"])
+        if want is None:
+            raise SystemExit(f"网站里没有「{p['zhi']}」的藏干")
+        got = re.findall(r"[\u4e00-\u9fff]", p["hidden"])
+        if got != want:
+            raise SystemExit(
+                f"{p['zhi']} 的藏干对不上：视频写的是 {' '.join(got)}，"
+                f"网站里是 {' '.join(want)}"
+            )
+        for g in got:
+            if g not in gan_el:
+                raise SystemExit(f"藏干「{g}」不在天干表里")
+
+    # 五行用色核对
+    tsx = CHART_TSX.read_text(encoding="utf-8")
+    cm = re.search(r"ELEMENT_COLOR[^=]*=\s*\{(.*?)\};", tsx, re.S)
+    if not cm:
+        raise SystemExit("读不出 BaziChart.tsx 里的 ELEMENT_COLOR")
+    site_colors = {
+        k: v.lstrip("#") for k, v in re.findall(r"([\u4e00-\u9fff]+)\s*:\s*[\"']#([0-9a-fA-F]{6})[\"']", cm.group(1))
+    }
+    if set(site_colors) != set(ELEMENT_COLORS):
+        raise SystemExit(f"五行对不上：网站 {sorted(site_colors)}，视频 {sorted(ELEMENT_COLORS)}")
+    for k, hexval in site_colors.items():
+        mine = "%02X%02X%02X" % ELEMENT_COLORS[k]
+        if hexval.upper() != mine:
+            raise SystemExit(
+                f"「{k}」的颜色和网站不一致：网站 #{hexval.upper()}，视频 #{mine}。"
+                "视频的五行用色必须与 BaziChart.tsx 的 ELEMENT_COLOR 完全相同。"
+            )
+
+    # 柱子上的干支必须在**各自**的表里。
+    # 只查"能不能查到五行"是不够的 —— 甲在地支表里查不到，但它在天干表里，
+    # 于是"把某柱的天干误写成甲"会查得到五行、悄悄画出来。必须分表查。
+    for p in pillars:
+        if p["gan"] not in gan_el:
+            raise SystemExit(f"「{p['gan']}」不是天干（天干表：{' '.join(gan_el)}）")
+        if p["zhi"] not in zhi_el:
+            raise SystemExit(f"「{p['zhi']}」不是地支（地支表：{' '.join(zhi_el)}）")
+        for g in re.findall(r"[\u4e00-\u9fff]", p["hidden"]):
+            if g not in gan_el:
+                raise SystemExit(f"藏干「{g}」不是天干")
+
+    return {**gan_el, **zhi_el}
 
 
 # ---------------------------------------------------------------- 时间轴
@@ -76,9 +175,7 @@ T_CTA = 29.4      # 落版
 TOTAL = 34.6
 
 # 换场的分寸：EDGE 是淡出/淡入各自占的时间，GAP 是两者之间的空档。
-# 早先 GAP=0 且两段重叠，结果四柱卡还没退干净，五行卡就压上来 ——
-# 上一屏的「四柱」两个字浮在「五行分布」上面。玄学内容本来就要求"看得准"，
-# 画面上出现重影，观众第一反应是"这东西坏了吧"。
+# 早先 GAP=0 且两段重叠，结果上一屏还没退干净下一屏就压上来 —— 出现叠字。
 EDGE = 0.45
 GAP = 0.15
 
@@ -107,8 +204,7 @@ def stage_alpha(t: float) -> dict[str, float]:
 
     集中在一处是为了让"同一时刻只能有一屏在画"成为**可计算**的性质：
     把 t 从 0 走到落版，任意时刻各段透明度之和必须 ≤ 1 —— 否则画面上就会出现
-    两屏叠字（用户成片里「四柱」压着「五行分布」就是这么来的）。
-    光靠肉眼看帧是看不全的，靠比像素也不可靠，只有这一个函数说了算。
+    两屏叠字。光靠肉眼看帧是看不全的，靠比像素也不可靠，只有这一个函数说了算。
     """
     out: dict[str, float] = {}
     for name in STAGES:
@@ -117,7 +213,7 @@ def stage_alpha(t: float) -> dict[str, float]:
     return out
 
 
-def max_total_alpha(step: float = 0.01) -> tuple[float, float]:
+def max_total_alpha(step: float = 0.005) -> tuple[float, float]:
     """扫描整条时间轴，返回（各段叠加的最大值, 取到最大值的时刻）。"""
     worst, worst_t = 0.0, 0.0
     t = 0.0
@@ -231,6 +327,32 @@ def draw_text_block(
     return y + len(lines) * line_h
 
 
+def draw_colored_run(
+    base: Image.Image,
+    cx: int,
+    y: int,
+    chars: list[str],
+    element_of: dict[str, str],
+    fnt: ImageFont.FreeTypeFont,
+    alpha: float,
+    fallback: tuple[int, int, int] = PAPER,
+    gap: int = 6,
+) -> None:
+    """一行字，**每个字按自己所属的五行上色**，整行居中。
+
+    这是用户明确提的要求：金木水火土要各是各的颜色，不能整行一个色。
+    逐字算宽度再累加，是因为等宽字体在中文里并不成立（「壬」和「一」宽度不同）。
+    """
+    if alpha <= 0.004 or not chars:
+        return
+    widths = [text_size(c, fnt)[0] for c in chars]
+    total = sum(widths) + gap * (len(chars) - 1)
+    x = cx - total / 2
+    for c, w in zip(chars, widths, strict=True):
+        blend_text(base, (int(x), y), c, fnt, ELEMENT_COLORS[element_of[c]], alpha, anchor="la")
+        x += w + gap
+
+
 def rounded_panel(
     base: Image.Image,
     box: tuple[int, int, int, int],
@@ -308,12 +430,12 @@ def ring(base: Image.Image, cx: int, cy: int, r: int, color, alpha: float, w: in
 
 # ---------------------------------------------------------------- 视频内容
 
-# 真实排盘结果（与网站首页样张同源，生辰用假的那组，四柱可核对）
+# 真实排盘结果（与网站首页样张同源，生辰用假的那组）。藏干由 check_canonical 核对。
 PILLARS = [
-    {"label": "年柱", "gong": "祖上宫", "gan": "庚", "zhi": "戌", "hidden": "戊 丁 辛"},
+    {"label": "年柱", "gong": "祖上宫", "gan": "庚", "zhi": "戌", "hidden": "戊 辛 丁"},
     {"label": "月柱", "gong": "父母宫", "gan": "辛", "zhi": "未", "hidden": "己 丁 乙"},
     {"label": "日柱", "gong": "命宫", "gan": "庚", "zhi": "辰", "hidden": "戊 乙 癸", "is_day": True},
-    {"label": "时柱", "gong": "子女宫", "gan": "辛", "zhi": "巳", "hidden": "丙 戊 庚"},
+    {"label": "时柱", "gong": "子女宫", "gan": "辛", "zhi": "巳", "hidden": "丙 庚 戊"},
 ]
 
 ELEMENTS = [("金", 4.5, 44), ("水", 3.0, 29), ("木", 1.0, 10), ("火", 1.0, 10), ("土", 0.8, 7)]
@@ -324,6 +446,8 @@ VERDICT_DETAIL = (
     "此局土金成势，最需要的是一条出口——火来炼金成器，木来疏土泄秀。"
     "偏偏火木最弱，所以命主的课题不是「不够强」，而是「力气往哪儿使」。"
 )
+
+ELEMENT_OF: dict[str, str] = {}
 
 
 def render_frame(t: float) -> Image.Image:
@@ -402,10 +526,13 @@ def draw_form(img: Image.Image, t: float, a: float) -> None:
 def draw_chart(img: Image.Image, t: float, a: float) -> None:
     """四柱卡。整条片子的主角。
 
+    天干地支**逐字按五行上色**：庚辛是金（银白）、戌未辰是土（赭黄）、
+    巳是火（赤）、丙丁是火 —— 一眼能看出金气有多重。日柱的庚辰就是全局
+    「金土厚重」的来源，颜色本身在讲这件事，不用旁白。
+
     两个动作都发生在**同一张卡里**，卡片位置不动：
       · 四柱逐列落下；
       · 藏干浮现，同时四柱的大字变暗 —— 视线自然从"柱"转到"柱里藏的东西"。
-    卡片不动是有意的：动了会让读者重新找位置，而这里要的是"盘在展开"。
     """
     if a <= 0:
         return
@@ -424,6 +551,8 @@ def draw_chart(img: Image.Image, t: float, a: float) -> None:
             continue
 
         if p.get("is_day"):
+            # 日柱的强调用**底色和描边**，不用字色 —— 字色已经归五行了，
+            # 再拿它表示"这是日主"就会让观众以为金色是某种五行。
             rounded_panel(
                 img,
                 (x0 + 10, CHART_TOP + 140, x0 + COL_W - 10, CHART_TOP + 800),
@@ -434,54 +563,40 @@ def draw_chart(img: Image.Image, t: float, a: float) -> None:
                 alpha=ca * a * 0.9,
             )
         if i:
-            vline(img, x0, CHART_TOP + 150, CHART_TOP + 790, PANEL_EDGE, a * 0.45)
+            # 竖分隔线到藏干那一行就停 —— 早先画到 790，正好横穿藏干的字
+            vline(img, x0, CHART_TOP + 150, CHART_TOP + 780, PANEL_EDGE, a * 0.45)
 
         blend_text(
-            img, (cx, CHART_TOP + 172), p["label"], font(38, serif=False), PAPER_DIM, ca * a, anchor="ma"
+            img, (cx, CHART_TOP + 172), p["label"], font(38, serif=False), GOLD if p.get("is_day") else PAPER_DIM,
+            ca * a, anchor="ma"
         )
         blend_text(
             img, (cx, CHART_TOP + 226), p["gong"], font(30, serif=False), PAPER_DIM, ca * a * 0.7, anchor="ma"
         )
 
-        color = GOLD if p.get("is_day") else PAPER
-        # 天干地支各自再晚一点，形成"逐字落下"的节奏
+        # 天干、地支各按自己的五行上色；两者同五行时（比如庚戌）靠字重区分开
         blend_text(
-            img,
-            (cx, CHART_TOP + 296),
-            p["gan"],
-            font(170),
-            color,
-            fade(t, T_PILLAR + 0.18 + i * 0.42, 0.42) * dim * a,
-            anchor="ma",
+            img, (cx, CHART_TOP + 296), p["gan"], font(170), ELEMENT_COLORS[ELEMENT_OF[p["gan"]]],
+            fade(t, T_PILLAR + 0.18 + i * 0.42, 0.42) * dim * a, anchor="ma",
         )
         blend_text(
-            img,
-            (cx, CHART_TOP + 470),
-            p["zhi"],
-            font(170),
-            color,
-            fade(t, T_PILLAR + 0.34 + i * 0.42, 0.42) * dim * a,
-            anchor="ma",
+            img, (cx, CHART_TOP + 470), p["zhi"], font(170), ELEMENT_COLORS[ELEMENT_OF[p["zhi"]]],
+            fade(t, T_PILLAR + 0.34 + i * 0.42, 0.42) * dim * a, anchor="ma",
         )
 
-        # 藏干：四柱落完之后才出现
+        # 藏干：四柱落完之后才出现，每个字也按各自的五行上色
         ha = fade(t, T_HIDDEN + i * 0.16, 0.5)
         if ha > 0:
             hline(img, x0 + 24, x0 + COL_W - 24, CHART_TOP + 812, PANEL_EDGE, a * 0.6)
             blend_text(
                 img, (cx, CHART_TOP + 834), "藏干", font(28, serif=False), GOLD_DIM, ha * a * 0.9, anchor="ma"
             )
-            blend_text(img, (cx, CHART_TOP + 890), p["hidden"], font(46), PAPER, ha * a, anchor="ma")
+            draw_colored_run(
+                img, cx, CHART_TOP + 884, p["hidden"].split(), ELEMENT_OF, font(50), ha * a, gap=8
+            )
 
-    blend_text(
-        img,
-        (W // 2, CHART_TOP + CHART_H - 62),
-        "庚金日主 · 生于未月",
-        font(30, serif=False),
-        GOLD_DIM,
-        a * 0.75,
-        anchor="ma",
-    )
+    # 这里**不放**「庚金日主 · 生于未月」那种注解：日柱框已经指明了日主，
+    # 日支辰写着土 —— 再补一句只是重复，还把藏干那一行挤得喘不过气。
 
 
 def draw_elements(img: Image.Image, t: float, a: float) -> None:
@@ -633,15 +748,23 @@ def encode(out_path: Path, total: float, fps: int = FPS) -> None:
         raise SystemExit(f"ffmpeg 失败，退出码 {proc.returncode}")
 
 
+def preflight() -> None:
+    """渲染前的两道闸。任何一道不过就不出片 —— 让错误停在脚本里，别停在成片里。"""
+    global ELEMENT_OF
+    ELEMENT_OF = check_canonical(PILLARS)
+    print("数据核对：藏干与五行用色与网站源码一致")
+
+    worst, worst_t = max_total_alpha()
+    print(f"换场核对：各段透明度之和最大 {worst:.3f}（在 t={worst_t:.2f}s）")
+    if worst > 1.0 + 1e-6:
+        raise SystemExit("有两屏同时在画，先修时间轴再渲染 —— 画面上会出现叠字。")
+
+
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "out.mp4")
     total = float(sys.argv[2]) if len(sys.argv) > 2 else TOTAL
 
-    worst, worst_t = max_total_alpha()
-    print(f"换场检查：各段透明度之和最大 {worst:.3f}（在 t={worst_t:.2f}s）")
-    if worst > 1.0 + 1e-6:
-        raise SystemExit("有两屏同时在画，先修时间轴再渲染 —— 画面上会出现叠字。")
-
+    preflight()
     print(f"渲染 {total}s × {FPS}fps = {int(total * FPS)} 帧，{W}×{H}")
     encode(out, total)
     size_mb = out.stat().st_size / 1024 / 1024
