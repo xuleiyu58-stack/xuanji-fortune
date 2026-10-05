@@ -195,16 +195,26 @@ test("写凭证的位置是封闭的一份名单", () => {
 test("新增的写入点只能回写已验签的凭证，不得自行构造权益", () => {
   // 名单本身不足以说明安全 —— 还要确认每一处的第二个参数都是
   // "已经存在的那份权益"，而不是现场算一个 ent 出来。
-  const ALLOWED_ARGS = ["next", "ent", "reissued", "guard.reissued", "null"];
+  //
+  // `ent` 与 `entitlement` 是同一个东西的两个本地名：前者是 `withPassCookie`
+  // 定义处的形参名，后者是路由里 `ensurePassCookie(req)` 解构出来的变量名。
+  // 两个都得在名单里，否则改个变量名就会误报（真发生过）。
+  const ALLOWED_ARGS = ["next", "ent", "entitlement", "reissued", "guard.reissued", "null"];
   const PARAM_DECL = /ent:\s*Entitlement/; // 定义处（pass-cookie.ts）的参数声明
 
-  // `withTid(x)` 只是给已验签的那份凭证补一个编号，不改变权益内容，
-  // 所以允许它包一层 —— 但**必须连皮一起剥掉再判内层**，
-  // 否则 `withTid(凭空造的 ent)` 就能绕过这条守卫。
+  // 调用点只允许传"已经存在的那份权益"，补编号由 `withPassCookie` 内部统一做 ——
+  // 所以这里**不该**再看到调用点自己套一层 withTid()。真出现了要想想是不是
+  // 有人把编号逻辑又搬回路由里了（那正是三处各写一遍、漏一处的由来）。
   const unwrapTid = (arg: string): string => {
     const m = arg.match(/^withTid\((.+)\)$/);
     return (m ? m[1] : arg).trim();
   };
+
+  // `a ?? b` 也是允许的：两个分支各自都必须是"已存在的权益"。
+  // 拆开分别判，而不是把 `x ?? y` 整串塞进白名单 —— 后者等于开了个后门，
+  // `凭空造的 ent ?? null` 会被整串匹配放过去。
+  const splitFallback = (arg: string): string[] =>
+    arg.split("??").map((s) => unwrapTid(s.trim()));
 
   for (const rel of TARGETS) {
     const src = source(rel);
@@ -214,11 +224,12 @@ test("新增的写入点只能回写已验签的凭证，不得自行构造权�
     const calls = [...src.matchAll(/withPassCookie\(\s*[^,]+,\s*([^,]+),/g)].map((m) => m[1].trim());
     assert.ok(calls.length > 0, `${rel} 未解析出调用`);
     for (const arg of calls) {
-      const inner = unwrapTid(arg);
-      assert.ok(
-        ALLOWED_ARGS.includes(inner),
-        `${rel} 把 "${arg}" 写成了凭证 —— 只允许回写已存在的权益（${ALLOWED_ARGS.join(" / ")}，可以套一层 withTid(...)）`
-      );
+      for (const inner of splitFallback(arg)) {
+        assert.ok(
+          ALLOWED_ARGS.includes(inner),
+          `${rel} 把 "${arg}" 写成了凭证 —— 只允许回写已存在的权益（${ALLOWED_ARGS.join(" / ")}）`
+        );
+      }
     }
   }
 });

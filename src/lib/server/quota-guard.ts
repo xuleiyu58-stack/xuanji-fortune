@@ -125,6 +125,23 @@ export function withDeviceCookie(
 }
 
 /**
+ * 清掉设备号。退出登录时用（见 `app/api/account/logout/route.ts`）。
+ *
+ * cookie 选项必须与 `withDeviceCookie` 逐字一致 —— 少一个 `path` 或
+ * `secure` 就会清不掉（浏览器按名字+域+路径匹配，选项不同就是另一个 cookie）。
+ */
+export function clearDeviceCookie(res: NextResponse): NextResponse {
+  res.cookies.set(DEVICE_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  return res;
+}
+
+/**
  * 判定这次请求放不放行。
  *
  * 读不到计数时**拒绝**而不是放行 —— 限流失效时宁可返回 503，也不能敞着口子烧 API 余额。

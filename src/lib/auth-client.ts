@@ -91,6 +91,23 @@ export function notifyAuthChanged(): void {
 
 export async function signOut(): Promise<void> {
   const sb = authClient();
+
+  // 先让服务端清掉本机的权益凭证与设备号，再登出。
+  //
+  // 顺序要紧：`xj_pass` 是 httpOnly 的，页面脚本读不到、也删不掉，
+  // 必须由服务端在响应里下发清除。而**清除要趁登录态还在的时候** ——
+  // 这份凭证的补签逻辑是"没有 cookie 但有登录态就从账户补一张"，
+  // 登出后再清虽然也能清掉，但中间那段时间里同机下一个人拿到的是一个
+  // 仍然有效的会员凭证。先清后登出，窗口最小。
+  //
+  // 失败不阻断登出：用户要退出就得让他退出，本机残留的那份凭证
+  // 下次登录时会被 claim 重新处理。为一次清除失败把人卡在登录态里更糟。
+  try {
+    await fetch("/api/account/logout", { method: "POST" });
+  } catch {
+    // 忽略：下面照样登出
+  }
+
   if (!sb) return;
   await sb.auth.signOut();
 }

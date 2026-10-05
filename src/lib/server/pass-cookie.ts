@@ -121,6 +121,19 @@ export async function ensurePassCookie(
  *
  * `ent` 为 null 表示整份凭证已空，此时**清除** cookie 而不是写一个空壳 ——
  * 空壳会让下次请求仍然带着一个无意义的头。
+ *
+ * ## 写出去的凭证一定带编号
+ *
+ * 这里统一过一道 `withTid()`，而不是让每个调用点自己记得。
+ *
+ * 编号是服务端消费台账的记账键（`tid:下标:剩余次数`），一份没有编号的凭证
+ * 写回浏览器，下次真去消费时台账认不出它是谁 —— 要么被 guard 直接拒掉
+ * （"凭证缺少 tid，拒绝消费单次券"），要么键退化成所有券共用的
+ * `undefined:0:1` 而把额度放光。两种后果都不是能在界面上看出来的，
+ * 所以这个不变式必须**由一个必经之处保证**，不能靠三个调用点各自的记性：
+ * 漏掉任何一处，症状都是"明明有额度却用不了"，而现场在别的地方。
+ *
+ * 已有编号时 `withTid()` 是幂等的（原样返回），所以这里是零成本的。
  */
 export function withPassCookie(
   res: NextResponse,
@@ -131,7 +144,7 @@ export function withPassCookie(
     clearPassCookie(res);
     return res;
   }
-  res.cookies.set(PASS_COOKIE, sign(ent, secret), {
+  res.cookies.set(PASS_COOKIE, sign(withTid(ent), secret), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
