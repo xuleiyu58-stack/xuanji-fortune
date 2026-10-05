@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  sign, verify, prune, isMemberActive, grantMember, grantPass, consumePass, toSummary,
+  sign, verify, prune, isMemberActive, grantMember, grantPass, consumePass, toSummary, withTid,
   EMPTY_ENTITLEMENT, type Entitlement,
 } from "../src/lib/entitlement.ts";
 
@@ -23,10 +23,57 @@ test("签发的凭证能被验回来", () => {
   assert.match(got.tid ?? "", /^[A-Za-z0-9_-]{16}$/, "应带上 12 字节 base64url 的凭证编号");
 });
 
-test("每次签发的编号都不同 —— 台账靠它区分「哪一次授权」", () => {
-  const a = verify(sign(member(30), SECRET), SECRET, NOW);
-  const b = verify(sign(member(30), SECRET), SECRET, NOW);
-  assert.notEqual(a?.tid, b?.tid, "两次签发的 tid 不该相同");
+test("编号只在「还没有编号」时补一个，有了就一路不变", () => {
+  // 这里原先断言的是"两次签发的 tid 不该相同"，即**每次签名都换新号**。
+  // 那条设计是错的：服务端消费台账的键是 `tid:下标:剩余次数`，
+  // 而兑换必然重新签发一次 —— 每次换号就等于把那张券的消费记录一笔勾销，
+  // 用光的券兑换后又能再用一次（两张 ¥6.6 的码换到三次解读）。
+  //
+  // 正确的规矩：编号代表凭**证的身份**，身份不能因为"重新签发一次"就变。
+  const ent = sign({ v: 1, member: NOW + 30 * DAY, passes: [] }, SECRET);
+  const first = verify(ent, SECRET, NOW);
+  assert.match(first?.tid ?? "", /^[A-Za-z0-9_-]{16}$/, "应补上 12 字节 base64url 的编号");
+
+  // 拿同一条已签发的凭证再签一次，编号必须原样保留
+  const again = verify(sign(first as Entitlement, SECRET), SECRET, NOW);
+  assert.equal(again?.tid, first?.tid, "重新签发不得换掉已有编号");
+});
+
+test("发放权益时就把编号定下来，不等到签名那一刻", () => {
+  // 兑换路径只把 grantPass 的结果交给 withPassCookie，中间没有别的补号步骤。
+  // 若发放时不带号，cookie 里的号就是签名时才随机出来的一个 ——
+  // 台账没见过它，于是那张券的消费记录全部对不上。
+  for (const got of [
+    grantMember(EMPTY_ENTITLEMENT, 30, NOW),
+    grantPass(EMPTY_ENTITLEMENT, "bazi", 1, 400, NOW),
+  ]) {
+    assert.match(got.tid ?? "", /^[A-Za-z0-9_-]{16}$/, "发放出来的权益必须已经带号");
+  }
+
+  // 已有编号时不得换掉
+  const seeded: Entitlement = { ...EMPTY_ENTITLEMENT, tid: "fixed-id-1234567" };
+  assert.equal(grantPass(seeded, "bazi", 1, 400, NOW).tid, "fixed-id-1234567");
+  assert.equal(grantMember(seeded, 30, NOW).tid, "fixed-id-1234567");
+});
+
+test("没有编号的凭证一律不许消费单次券 —— 否则台账的键会退化成所有券共用一个", () => {
+  // 台账的键是 `tid:下标:剩余次数`。tid 为空时键会变成 `undefined:0:1`，
+  // 对所有人所有券都是同一个 —— 第一张券消费之后，后面每一张新券的
+  // 首次消费都会被当成"重放"而放行。既丢额度也丢防线。
+  //
+  // 两道防线，缺一不可：
+  //   · 发放/消耗时补号（上面两条测试）
+  //   · 读到旧的无号凭证时补号并写回（pass-cookie 的 ensurePassCookie）
+  const raw = JSON.stringify({ v: 1, member: null, passes: [{ m: "bazi", n: 1, e: NOW + 400 * DAY }] });
+  const legacy: Entitlement = { v: 1, member: null, passes: [{ m: "bazi", n: 1, e: NOW + 400 * DAY }] };
+  assert.equal(legacy.tid, undefined, "前提：这一份确实没有编号");
+  assert.ok(raw.length > 0);
+
+  const stamped = withTid(legacy);
+  assert.match(stamped.tid ?? "", /^[A-Za-z0-9_-]{16}$/, "补号后必须有编号");
+  assert.notEqual(stamped.tid, undefined);
+  // 补号是幂等的：已经是同一份对象就不该再换一个号
+  assert.equal(withTid(stamped), stamped, "已有编号时应原样返回，不得换号");
 });
 
 test("同一份载荷重复签名会保留已有的编号", () => {

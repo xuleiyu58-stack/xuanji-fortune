@@ -266,7 +266,25 @@ export async function POST(req: NextRequest) {
       consume: guard.decision.consume,
       nowSec: nowSec(),
     });
-    if (next !== null || guard.reissued) withPassCookie(res, next, secret);
+    /*
+     * 无条件写回 —— **`next` 为 null 时也要走这一趟**。
+     *
+     * 这里原先写的是 `if (next !== null || guard.reissued)`，本意是"只在确实
+     * 有变化时才动 cookie"。但那道门恰好把唯一真正需要改 cookie 的情况挡在外面：
+     * 最后一张券用掉后 `consumePass` 会把它从数组里剔掉、`prune` 随之返回 null，
+     * 意思是"整份凭证已空，请清掉 cookie"。被挡住之后，浏览器里那张已耗尽的券
+     * 会一直躺着：
+     *   · 页首继续显示「已解锁 1 次」、会员页显示「剩余 1 次」，与实际不符；
+     *   · 再排一次盘或追问时，服务端算出的还是同一个 passId，台账里已消费 → 403；
+     *   · 而残留的券又让 `decidePreview` 判为"这人已付费"，连免费试读都不给；
+     *   · 前端收到 403 弹付款窗，弹窗见 `alreadyUnlocked` 为真，只说"已解锁"。
+     * 用户于是卡在一个只说"已解锁"却永远不出结果的循环里 —— 刚付过钱的人
+     * 被告知去"使用激活码开通"。这是本次全站审计里最重的一条。
+     *
+     * `withPassCookie` 自己就会在 null 时调 `clearPassCookie`，
+     * 所以调用方不需要、也不该再判一次。
+     */
+    withPassCookie(res, next, secret);
   }
 
   return res;

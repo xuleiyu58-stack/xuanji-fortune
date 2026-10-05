@@ -61,9 +61,43 @@ function newTokenId(): string {
 }
 
 /**
- * 签发。**每次调用都会分配一个新的 tid**，这是刻意的：
- * 凭证的每一次重新签发都是一份新的授权对象，服务端的消费台账也随之另起一份。
- * 沿用旧 tid 会让"兑换后回写"的那张新凭证带着已被用掉的记录。
+ * 给一份还没有编号的凭证定下编号；已经有了就原样返回（不改动入参）。
+ *
+ * **为什么要单独一个函数，而不是塞在 `sign()` 里就算完：**
+ *
+ * 编号代表这份凭证的身份，而服务端的消费台账（`pass_consumptions`）按
+ * `tid:下标:剩余次数` 记账。签名那一刻才补号，就意味着"台账里记的号"和
+ * "cookie 里写的号"可能是两次不同的随机 —— 一旦不一致，台账就再也拦不住
+ * 那张券的重放。
+ *
+ * 所以规矩是：**权益在哪一刻变了，编号就在哪一刻定下来**，之后一路不变。
+ * 凡是要"改权益"的地方（发券、续会员、合并）都必须先过这里。
+ *
+ * 反面教材就在眼前：`sign()` 曾经**每次调用**都换新号，于是兑换一次
+ * （必然重新签发）就等于把台账里那张券的消费记录一笔勾销 —— 用光的券
+ * 兑换后又能再用一次。同一份凭证只要经过一次签名就换了身份，
+ * 那一切按身份记账的东西（消费台账、账户侧的 `acc-<uid>`）全部失效。
+ *
+ * 另一半同样是坑：**不给号也不行**。没有 `tid` 时台账的键会退化成
+ * `undefined:0:1` —— 对所有人所有券都是同一个键，第一张券消费过之后，
+ * 后面每一张新券的首次消费都会被当成"重放"而放行。既丢额度也丢防线。
+ * 两条路都错，唯一对的是"一定有号，且只定一次"。
+ */
+export function withTid(ent: Entitlement): Entitlement {
+  if (ent.tid) return ent;
+  return { ...ent, tid: newTokenId() };
+}
+
+/**
+ * 签发。
+ *
+ * 编号应当已经由 `withTid()` 在"权益变更那一刻"定好，这里**只沿用**。
+ * 正常路径下 `ent.tid` 一定有值；`?? newTokenId()` 是兜底，不是设计。
+ *
+ * 兜底为什么留着而不是直接报错：这个函数是纯的（不读秘密、不读库），
+ * 在测试和离线脚本里常被直接调用；为了一个本该由调用方保证的前置条件
+ * 让它抛异常，代价大于收益。但**真实请求路径必须保证 tid 已定** ——
+ * 否则台账的键会退化成所有券共用的 `undefined:0:1`，见 `withTid()` 的注释。
  */
 export function sign(ent: Entitlement, secret: string): string {
   const withId: Entitlement = { ...ent, tid: ent.tid ?? newTokenId() };
@@ -142,13 +176,23 @@ export function verify(
   return parseEntitlement(raw, nowSec);
 }
 
-/** 续期时从现有到期时间往后接，而不是从今天重算 —— 否则提前续费会亏掉剩余天数。 */
+/**
+ * 续期时从现有到期时间往后接，而不是从今天重算 —— 否则提前续费会亏掉剩余天数。
+ *
+ * 过 `withTid()`：续期是一次权益变更，编号必须在这一刻定下来（若原本没有）。
+ * 漏掉它的后果见 `withTid()` 的注释 —— 那不是理论风险，是已经漏过额度的口子。
+ */
 export function grantMember(ent: Entitlement, days: number, nowSec: number): Entitlement {
   const base = isMemberActive(ent, nowSec) ? (ent.member as number) : nowSec;
-  return { v: ENTITLEMENT_VERSION, member: base + days * DAY_SECONDS, passes: ent.passes };
+  return withTid({
+    v: ENTITLEMENT_VERSION,
+    tid: ent.tid,
+    member: base + days * DAY_SECONDS,
+    passes: ent.passes,
+  });
 }
 
-/** 同模式的券合并：次数相加，到期取较晚者。 */
+/** 同模式的券合并：次数相加，到期取较晚者。同样过 `withTid()`，理由见上。 */
 export function grantPass(
   ent: Entitlement,
   mode: string,
@@ -161,7 +205,7 @@ export function grantPass(
   const passes = existing
     ? ent.passes.map((p) => (p.m === mode ? { m: mode, n: p.n + n, e: Math.max(p.e, e) } : p))
     : [...ent.passes, { m: mode, n, e }];
-  return { v: ENTITLEMENT_VERSION, member: ent.member, passes };
+  return withTid({ v: ENTITLEMENT_VERSION, tid: ent.tid, member: ent.member, passes });
 }
 
 /**

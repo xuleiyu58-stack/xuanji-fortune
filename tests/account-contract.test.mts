@@ -50,9 +50,20 @@ test("有凭证时不查库：ensurePassCookie 必须先返回现成的凭证", 
   );
   assert.match(
     PASS_COOKIE,
-    /if \(existing\) return \{ entitlement: existing, reissued: null \}/,
+    /if \(!existing\.tid && existing\.passes\.length > 0\) \{/,
+    "旧凭证缺编号时应在这一层补上（否则消费时无从记账，见 quota-guard）"
+  );
+  assert.match(
+    PASS_COOKIE,
+    /return \{ entitlement: existing, reissued: null \}/,
     "有凭证时应直接返回，不得继续走到查库那一步"
   );
+  // 两条返回路径都必须在 userFromRequest 之前 —— 包括新增的补编号分支。
+  // 补编号本身不读库，所以它同样不该拖出一次数据库往返。
+  const iBackfill = PASS_COOKIE.indexOf("if (!existing.tid && existing.passes.length > 0)");
+  assert.ok(iBackfill >= 0 && iBackfill < iAccount, "补编号分支也必须先于查库");
+  const iPlainReturn = PASS_COOKIE.indexOf("return { entitlement: existing, reissued: null }");
+  assert.ok(iPlainReturn < iAccount, "普通返回路径也必须先于查库");
 });
 
 test("quota-guard 只通过 ensurePassCookie 取权益，不自己查账户表", () => {
@@ -76,7 +87,11 @@ test("补签的凭证会被写回响应", () => {
 
   // 回写逻辑本身：补签时必须把新凭证写回去，否则下次请求还要再查一次库
   const wb = readCode("src/lib/auth-writeback.ts");
-  assert.match(wb, /return reissued \?\? null/, "无消耗时应回写补签的凭证");
+  assert.match(
+    wb,
+    /return reissued \? withTid\(reissued\) : null/,
+    "无消耗时应回写补签的凭证（并补上编号）"
+  );
   assert.match(wb, /entitlement \?\? reissued/, "消耗时应扣在补签的那份上");
 });
 

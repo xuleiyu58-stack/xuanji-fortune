@@ -13,7 +13,7 @@
  *
  * 返回 null 表示整份凭证已空，调用方应当**清除** cookie 而不是写个空壳。
  */
-import { consumePass, type Entitlement } from "./entitlement.ts";
+import { consumePass, withTid, type Entitlement } from "./entitlement.ts";
 
 export interface WriteBackInput {
   /** 放行前请求携带的权益（清了 cookie 时为 null） */
@@ -33,10 +33,14 @@ export function passWriteBack(input: WriteBackInput): Entitlement | null {
     // 补签时 entitlement 已经是补签的那份（见 ensurePassCookie），
     // 但这里仍然兜一层，避免调用方顺序变化时静默丢权益。
     const base = entitlement ?? reissued;
-    return base ? consumePass(base, consume.passIndex, nowSec) : null;
+    if (!base) return null;
+    // 过 withTid()：扣减是一次权益变更，编号必须在这一刻定下来。
+    // 没有编号时台账的键会退化成所有券共用的 `undefined:0:1` ——
+    // 第一张券消费后，后面每张新券的首次消费都会被当成"重放"而放行。
+    return consumePass(withTid(base), consume.passIndex, nowSec);
   }
 
   // 没有消耗：只处理"补签"这一种情况，把新凭证写回去，免得下次请求再查一次库。
   // 会员（consume === "none"）走的就是这条路。
-  return reissued ?? null;
+  return reissued ? withTid(reissued) : null;
 }

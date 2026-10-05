@@ -22,7 +22,7 @@
  * 也不能因为密钥缺失就把所有人当成会员。
  */
 import type { NextRequest, NextResponse } from "next/server";
-import { sign, verify, toSummary, type Entitlement } from "@/lib/entitlement";
+import { sign, verify, toSummary, withTid, type Entitlement } from "@/lib/entitlement";
 import { passSecret } from "@/lib/server/runtime";
 import { readAccountEntitlement, userFromRequest } from "@/lib/server/account-store";
 
@@ -60,7 +60,7 @@ export function hasAnyCredential(ent: Entitlement | null): boolean {
  * 新凭证写回响应（用 withPassCookie），否则用户下一次请求还得再查一次库。
  *
  * 这一步会读库，所以只在**凭证缺失时**触发；带着有效 cookie 的常规请求
- * 完全不会走到这里。
+ * 完全不会走到这里（唯一例外是下面那条给旧凭证补编号的窄路径）。
  */
 export async function ensurePassCookie(
   req: NextRequest
@@ -69,7 +69,23 @@ export async function ensurePassCookie(
   if (!secret) return { entitlement: null, reissued: null };
 
   const existing = readEntitlement(req);
-  if (existing) return { entitlement: existing, reissued: null };
+  if (existing) {
+    // 旧凭证补编号：没有 tid 的凭证走不到消费那一步。
+    //
+    // quota-guard 见到"要消耗券但没有 tid"会直接 403（它无从记账，
+    // 放行等于白送）。对用户来说那和"券用不掉"没有区别 —— 又是一次
+    // "明明有额度却只说已解锁"的循环。所以在这里把它补上：这是请求进入
+    // 判定的必经之处，编号在这一刻定下并**立刻写回 cookie**，
+    // 于是台账的键与 cookie 里写的号从第一次使用起就是同一个。
+    //
+    // 只有会员而没有券的旧凭证不需要：会员不消耗券，编号用不上，
+    // 无谓地改写 cookie 只是噪音。
+    if (!existing.tid && existing.passes.length > 0) {
+      const upgraded = withTid(existing);
+      return { entitlement: upgraded, reissued: upgraded };
+    }
+    return { entitlement: existing, reissued: null };
+  }
 
   // cookie 缺失或已失效：若用户已登录，从账户侧补一张
   const user = await userFromRequest(req);
@@ -85,9 +101,9 @@ export async function ensurePassCookie(
     // 账户行里没有 tid（那是设备凭证的概念）。这里给它一个**稳定**的编号：
     // 由 user_id 派生，因此每次补签都得到同一个值。
     //
-    // 为什么必须稳定：消费台账的键是 `tid:下标`。若每次补签都换一个新编号，
-    // 同一张券在台账里就成了不同的条目 —— 重放同一份 cookie 就能无限次通过。
-    // 用 user_id 派生则无论补签多少次，指向的都是同一张券。
+    // 为什么必须稳定：消费台账的键是 `tid:下标:剩余次数`。若每次补签都换一个
+    // 新编号，同一张券在台账里就成了不同的条目 —— 重放同一份 cookie 就能
+    // 无限次通过。用 user_id 派生则无论补签多少次，指向的都是同一张券。
     return {
       entitlement: { ...fromAccount, tid: `acc-${user.id}` },
       reissued: { ...fromAccount, tid: `acc-${user.id}` },

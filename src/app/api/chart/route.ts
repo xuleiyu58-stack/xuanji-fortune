@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildBaziChart } from "@/lib/bazi";
+import { withTid } from "@/lib/entitlement";
 import { MODES } from "@/lib/pricing";
 import { validateFortuneRequest } from "@/lib/validation";
 import { readOnlyGuard } from "@/lib/server/quota-guard";
@@ -68,8 +69,13 @@ export async function POST(req: NextRequest) {
 
   // 从账户侧补签的凭证要写回，否则每次回看历史都得再查一次库。
   // 这不涉及消费，是纯收益。
+  //
+  // 过 `withTid()` 再写：签名只在"凭证还没有编号"时补一个，**而补出来的那个
+  // 号不会留在 cookie 里**（除非这里主动写回）。于是每次回看历史都会在响应里
+  // 塞一个不同的编号，用户下一次真去消费时 cookie 里带的又是另一个 ——
+  // 台账按编号记账，认不出这是同一张券，消费记录就白记了。
   const secret = passSecret();
-  if (secret && guard.reissued) withPassCookie(res, guard.reissued, secret);
+  if (secret && guard.reissued) withPassCookie(res, withTid(guard.reissued), secret);
 
   return res;
 }

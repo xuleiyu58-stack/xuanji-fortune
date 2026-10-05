@@ -123,7 +123,9 @@ export async function POST(req: NextRequest) {
     guard.isNewDevice
   );
 
-  // 与 fortune 同口径：判断收在 lib/auth-writeback.ts，两个入口共用一套
+  // 与 fortune 同口径：判断收在 lib/auth-writeback.ts，两个入口共用一套。
+  // 这里**不能**加 `if (next !== null)` —— 券用光时 next 就是 null，
+  // 那正是"该清 cookie"的信号。详细理由见 fortune/route.ts 同处注释。
   const secret = passSecret();
   if (secret) {
     const next = passWriteBack({
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
       consume: guard.decision.consume,
       nowSec: nowSec(),
     });
-    if (next !== null || guard.reissued) withPassCookie(res, next, secret);
+    withPassCookie(res, next, secret);
   }
 
   return res;

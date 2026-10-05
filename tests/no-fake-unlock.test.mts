@@ -198,6 +198,14 @@ test("新增的写入点只能回写已验签的凭证，不得自行构造权�
   const ALLOWED_ARGS = ["next", "ent", "reissued", "guard.reissued", "null"];
   const PARAM_DECL = /ent:\s*Entitlement/; // 定义处（pass-cookie.ts）的参数声明
 
+  // `withTid(x)` 只是给已验签的那份凭证补一个编号，不改变权益内容，
+  // 所以允许它包一层 —— 但**必须连皮一起剥掉再判内层**，
+  // 否则 `withTid(凭空造的 ent)` 就能绕过这条守卫。
+  const unwrapTid = (arg: string): string => {
+    const m = arg.match(/^withTid\((.+)\)$/);
+    return (m ? m[1] : arg).trim();
+  };
+
   for (const rel of TARGETS) {
     const src = source(rel);
     if (!src.includes("withPassCookie(")) continue;
@@ -206,9 +214,10 @@ test("新增的写入点只能回写已验签的凭证，不得自行构造权�
     const calls = [...src.matchAll(/withPassCookie\(\s*[^,]+,\s*([^,]+),/g)].map((m) => m[1].trim());
     assert.ok(calls.length > 0, `${rel} 未解析出调用`);
     for (const arg of calls) {
+      const inner = unwrapTid(arg);
       assert.ok(
-        ALLOWED_ARGS.includes(arg),
-        `${rel} 把 "${arg}" 写成了凭证 —— 只允许回写已存在的权益（${ALLOWED_ARGS.join(" / ")}）`
+        ALLOWED_ARGS.includes(inner),
+        `${rel} 把 "${arg}" 写成了凭证 —— 只允许回写已存在的权益（${ALLOWED_ARGS.join(" / ")}，可以套一层 withTid(...)）`
       );
     }
   }
