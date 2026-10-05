@@ -52,15 +52,24 @@ GOLD_DIM = (150, 124, 66)
 PAPER = (226, 224, 216)    # 正文米白
 PAPER_DIM = (150, 150, 148)
 
-# 五行配色 —— 与 src/components/BaziChart.tsx 的 ELEMENT_COLOR 逐字一致。
-# 传统是「木青火赤土黄金白水黑」，两边都做了去饱和以便落在墨色底上。
-# check_canonical() 会把这份表跟网站源码比一遍，漂了就报错。
+# 五行配色。木水火土与 `src/components/BaziChart.tsx` 的 ELEMENT_COLOR 逐字一致；
+# **金是唯一一处有意不同**：用户要求金用金色，而网站那边是银白（#c3c9d4）。
+# 取 #e0cf9a 而不是品牌金 #d4af5a，是因为品牌金几乎等于土色 #c2a061 ——
+# 金土在盘上大量相邻（庚戌、辛未、庚辰都是金土并排），两个黄凑在一起会糊成一片，
+# 比用银色还糟。这里要的是"比土更浅更亮的金"，不是"另一种土"。
+# check_canonical() 会把这份表跟网站比一遍，金按 DIVERGENT 豁免、其余照旧比对。
 ELEMENT_COLORS: dict[str, tuple[int, int, int]] = {
     "木": (0x7F, 0xB0, 0x8E),
     "火": (0xC9, 0x74, 0x5A),
     "土": (0xC2, 0xA0, 0x61),
-    "金": (0xC3, 0xC9, 0xD4),
+    "金": (0xE0, 0xCF, 0x9A),
     "水": (0x7A, 0xA0, 0xC0),
+}
+
+# 有意与网站不同的那几项，连同为什么。写在这里是为了让"不一致"是**已知且写明的**，
+# 而不是某天有人发现视频和网站颜色对不上、却查不出是谁改的。
+DIVERGENT: dict[str, str] = {
+    "金": "用户要求金用金色，网站那边是银白",
 }
 
 REPO = Path(__file__).resolve().parent.parent
@@ -136,11 +145,14 @@ def check_canonical(pillars: list[dict]) -> dict:
     if set(site_colors) != set(ELEMENT_COLORS):
         raise SystemExit(f"五行对不上：网站 {sorted(site_colors)}，视频 {sorted(ELEMENT_COLORS)}")
     for k, hexval in site_colors.items():
+        if k in DIVERGENT:
+            continue  # 有意不同，理由记在 DIVERGENT 里
         mine = "%02X%02X%02X" % ELEMENT_COLORS[k]
         if hexval.upper() != mine:
             raise SystemExit(
                 f"「{k}」的颜色和网站不一致：网站 #{hexval.upper()}，视频 #{mine}。"
-                "视频的五行用色必须与 BaziChart.tsx 的 ELEMENT_COLOR 完全相同。"
+                "视频的五行用色必须与 BaziChart.tsx 的 ELEMENT_COLOR 相同 ——"
+                "确实要有意不同的话，把理由加进 DIVERGENT，别让它变成一次悄悄的不一致。"
             )
 
     # 柱子上的干支必须在**各自**的表里。
@@ -551,16 +563,16 @@ def draw_chart(img: Image.Image, t: float, a: float) -> None:
             continue
 
         if p.get("is_day"):
-            # 日柱的强调用**底色和描边**，不用字色 —— 字色已经归五行了，
-            # 再拿它表示"这是日主"就会让观众以为金色是某种五行。
+            # 日柱的强调用**底色和描边**，不用字色 —— 字色已经归五行了。
+            # 描边用偏暗的金：金字本身是亮的，框再亮就分不出哪是重点。
             rounded_panel(
                 img,
                 (x0 + 10, CHART_TOP + 140, x0 + COL_W - 10, CHART_TOP + 800),
                 radius=30,
-                fill=(30, 26, 18),
-                edge=GOLD_DIM,
-                edge_w=2,
-                alpha=ca * a * 0.9,
+                fill=(34, 30, 20),
+                edge=(0x8A, 0x74, 0x3E),
+                edge_w=3,
+                alpha=ca * a,
             )
         if i:
             # 竖分隔线到藏干那一行就停 —— 早先画到 790，正好横穿藏干的字
