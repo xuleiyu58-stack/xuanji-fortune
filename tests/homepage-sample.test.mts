@@ -95,6 +95,7 @@ const SAMPLE_CODE = codeOnly(SAMPLE);
 const HOME = read("../src/app/page.tsx");
 
 const { SECTION_TITLES } = await import("../src/lib/reading.ts");
+const { buildBaziChart } = await import("../src/lib/bazi/index.ts");
 
 test("样张只展示一节，不能把整份解读摆上去", () => {
   // 数一下样张源码里出现了几个【小节名】——超过一个就等于白送
@@ -121,11 +122,96 @@ test("样张保留四柱，好让「依据」可以被对照核验", () => {
 });
 
 test("样张不得包含完整生辰", () => {
-  // 生辰是隐私，也是付费后才该完整呈现的东西。样张只留四柱。
+  /*
+   * 生辰是隐私，也是付费后才该完整呈现的东西。样张**显示出来的**只有四柱。
+   *
+   * 断言范围必须是 SAMPLE 那个对象本身：`SAMPLE_BIRTH` 是刻意留在文件里的
+   * 常量（没有它就无法核对四柱是不是真的算得出来），对着整个文件断言
+   * 会把那个常量一起否掉 —— 那等于要求把可核验性删掉。
+   */
+  const sampleObj = /const SAMPLE = \{[\s\S]*?\n\};/.exec(SAMPLE)?.[0] ?? "";
+  assert.ok(sampleObj, "应当能切出 SAMPLE 对象");
   assert.doesNotMatch(
-    SAMPLE,
+    sampleObj,
     /birthDate|birthTime/,
-    "样张不该带生辰字段 —— 四柱够了，出生日期与时辰是用户的隐私"
+    "展示出去的样张里不该有生辰字段 —— 四柱够了，出生日期与时辰是用户的隐私"
+  );
+  assert.ok(sampleObj.includes("pillars"), "SAMPLE 里应当有四柱");
+});
+
+test("样张的四柱必须真的算得出来 —— 这是它自称可核验的前提", () => {
+  /*
+   * 这条是拿真事故换来的。
+   *
+   * 样张原先手写着 `庚戌 · 辛未 · 庚辰 · 辛巳`，而那个组合来自不了任何真实
+   * 日期（辛未月的月干只可能是癸）；它下面的「依据」又引用了四柱里根本没有的
+   * 「丑」。样张最该可信的地方反而自相矛盾 —— 而它的卖点正是「四柱可自行核对」。
+   *
+   * 所以这里把 SAMPLE_BIRTH 喂给真的排盘引擎，比对 SAMPLE.pillars。
+   * 两者任何一处被单独改动，这条就会报错。
+   */
+  const birth = /const SAMPLE_BIRTH = \{([^}]*)\}/.exec(SAMPLE)?.[1] ?? "";
+  assert.ok(birth.includes("birthDate"), "样张必须留着那个生辰常量，否则四柱无从核对");
+
+  const pick = (k) => new RegExp(`${k}:\\s*"([^"]+)"`).exec(birth)?.[1];
+  const input = {
+    birthDate: pick("birthDate"),
+    birthTime: pick("birthTime"),
+    gender: pick("gender"),
+  };
+  assert.ok(input.birthDate && input.birthTime && input.gender, "生辰常量三个字段都要有");
+
+  const chart = buildBaziChart(input);
+  assert.ok(chart, `排盘失败：${JSON.stringify(input)}`);
+
+  const real = chart.pillars.map((p) => `${p.gan}${p.zhi}`).join(" · ");
+  const shown = /pillars:\s*"([^"]+)"/.exec(SAMPLE)?.[1];
+  assert.equal(
+    shown,
+    real,
+    `样张的四柱与真盘对不上。\n  样张写的：${shown}\n  真盘排的：${real}\n` +
+      `（生辰 ${input.birthDate} ${input.birthTime} ${input.gender}）`
+  );
+});
+
+test("「依据」里点到的干支，必须真的在盘上", () => {
+  // 「依据」的可信度全靠这一点：它引用的干支能在上面那行四柱里找到。
+  // 原先那句写着"地支未、丑、戌、辰"，而四柱是"庚戌 · 辛未 · 庚辰 · 辛巳"——
+  // 丑不在里面，巳又没被提到。
+  const birth = /const SAMPLE_BIRTH = \{([^}]*)\}/.exec(SAMPLE)?.[1] ?? "";
+  const pick = (k) => new RegExp(`${k}:\\s*"([^"]+)"`).exec(birth)?.[1];
+  const chart = buildBaziChart({
+    birthDate: pick("birthDate"),
+    birthTime: pick("birthTime"),
+    gender: pick("gender"),
+  });
+
+  const onChart = new Set(chart.pillars.flatMap((p) => [p.gan, p.zhi]));
+
+  /*
+   * 只看 SAMPLE 对象里的文本值，**不要看整份源码** ——
+   * 解释这次改动的注释里正引用着那串错误地支（"依据又引用了四柱里
+   * 根本没有的「丑」"），对着全文匹配会命中那句注释。
+   * 这是本项目第三次栽在同一件事上：断言"代码里没有某个写法"之前先剥注释。
+   */
+  const BRANCHES = "子丑寅卯辰巳午未申酉戌亥";
+  const textValues = [...SAMPLE_CODE.matchAll(/"([^"\n]{8,})"/g)].map((m) => m[1]).join("\n");
+
+  /*
+   * 地支可以连着写（"未丑戌辰四土"），也可以加顿号（"未、丑、戌、辰"）。
+   * 两种都要认，所以先把顿号统一成空串，再按单个字取。
+   * 第一版只按顿号 split，碰上连写的写法就会得到一整串"未丑戌辰"、
+   * 长度断言随即误报 —— 判据要看的是"提到了哪几个字"，不是"有没有顿号"。
+   */
+  const joined = new RegExp(`地支([${BRANCHES}、]+)`).exec(textValues)?.[1] ?? "";
+  const named = (joined.replace(/、/g, "").match(new RegExp(`[${BRANCHES}]`, "g")) ?? []);
+  assert.ok(named.length >= 2, `依据里应当点到具体地支，实际：「${joined}」`);
+
+  const missing = named.filter((z) => !onChart.has(z));
+  assert.deepEqual(
+    missing,
+    [],
+    `依据里点到的地支必须都在盘上，这几个不在：${missing.join("、")}\n  盘上有的：${[...onChart].join("")}`
   );
 });
 
