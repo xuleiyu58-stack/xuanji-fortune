@@ -32,5 +32,6 @@ as $$
 $$;
 
 revoke all on function public.redeem_code(text, text) from anon, authenticated;
+-- ⚠️ 这一行不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
 
 create index if not exists redeem_codes_batch_idx on public.redeem_codes (batch);

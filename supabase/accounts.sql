@@ -113,6 +113,7 @@ as $$
 $$;
 
 revoke all on function public.claim_link_code(text, timestamptz) from anon, authenticated;
+-- ⚠️ 这一行不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
 
 -- ── 单次券消费台账 ──────────────────────────────────────────
 --
@@ -203,6 +204,7 @@ end;
 $$;
 
 revoke all on function public.claim_device_entitlement(uuid, text, timestamptz) from anon, authenticated;
+-- ⚠️ 这一行不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
 
 create or replace function public.merge_entitlement(
   uid uuid,
@@ -267,6 +269,7 @@ end;
 $$;
 
 revoke all on function public.merge_entitlement(uuid, bigint, jsonb, timestamptz) from anon, authenticated;
+-- ⚠️ 这一行不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
 
 -- ── 清理过期的认领码 ────────────────────────────────────────
 -- 可选。挂在 pg_cron 上按日执行，或手动跑。

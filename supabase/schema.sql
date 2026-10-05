@@ -27,6 +27,7 @@ as $$
 $$;
 
 revoke all on function public.bump_usage(text) from anon, authenticated;
+-- ⚠️ 这一行不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
 
 -- 便于按日清理历史用量
 create index if not exists usage_day_idx on public.usage (day);
