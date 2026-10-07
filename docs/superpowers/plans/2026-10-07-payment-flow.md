@@ -61,10 +61,12 @@
 **新增静态资源（需用户提供，见 spec §15）：**
 
 ```
-public/pay/alipay-6.60.png   public/pay/wechat-6.60.png
-public/pay/alipay-9.90.png   public/pay/wechat-9.90.png
-public/pay/alipay-69.00.png  public/pay/wechat-69.00.png
+public/pay/wechat-6.60.png   ← PLANS.bazi.price
+public/pay/wechat-9.90.png   ← PLANS.member_month.price
+public/pay/wechat-69.00.png  ← PLANS.member_year.price
 ```
+
+文件名由 `PLANS` 的价格 `toFixed(2)` 推导，不写死。**当前只做微信**（用户 2026-10-07 决定不做支付宝）；`PayChannel.id` 类型仍保留 `"alipay" | "wechat"`，渠道清单里只列微信 —— 渠道集合易变，用数组承载它，加回支付宝只是补一行。
 
 ---
 
@@ -652,18 +654,17 @@ test("金额格式化为两位小数，用于拼收款码文件名", () => {
   assert.equal(inst.kind, "qr");
   if (inst.kind !== "qr") return;
   const paths = inst.channels.map((c) => c.qrSrc);
-  assert.ok(paths.includes("/pay/alipay-6.60.png"), `实际: ${paths.join(",")}`);
   assert.ok(paths.includes("/pay/wechat-6.60.png"), `实际: ${paths.join(",")}`);
 });
 
-test("每个计划都给出支付宝与微信两个渠道", () => {
+test("每个计划都给出微信渠道", () => {
   for (const planId of ["bazi", "member_month", "member_year"] as const) {
     const inst = payInstructionFor(planId);
     assert.equal(inst.kind, "qr");
     if (inst.kind !== "qr") return;
     assert.deepEqual(
-      inst.channels.map((c) => c.id).sort(),
-      ["alipay", "wechat"],
+      inst.channels.map((c) => c.id),
+      ["wechat"],
       `${planId} 缺少渠道`
     );
   }
@@ -709,8 +710,13 @@ export type PayInstruction =
   | { kind: "qr"; amount: number; channels: PayChannel[] }
   | { kind: "redirect"; amount: number; url: string };
 
+/**
+ * 启用的收款渠道。**当前只做微信**（用户 2026-10-07 决定不做支付宝）。
+ *
+ * 用数组而不是单个值：渠道集合已经被改过一次（设计时两个、实现时一个），
+ * 说明它易变。加回支付宝只是往这里补一行，类型与 UI 都不用动。
+ */
 const PROVIDERS: { id: PayChannel["id"]; label: string }[] = [
-  { id: "alipay", label: "支付宝" },
   { id: "wechat", label: "微信" },
 ];
 
@@ -1876,9 +1882,10 @@ useEffect(() => {
 替换现有的收款码区块（原 `qrcode.jpg` 那段）与说明列表。要点：
 
 - 金额醒目展示：`¥{order.amount.toFixed(2)}`，并从 `PLANS[plan].name` 取套餐名
-- 两个渠道并列，每个一张收款码：`order.instruction.channels.map(...)`，`<img src={c.qrSrc} onError={() => setQrFailed(true)} />`
-- 渠道标题用 `c.label`（"支付宝" / "微信"）
+- **按 `order.instruction.channels` 循环渲染，不要写死渠道个数** —— 当前只有一个（微信），但渠道集合易变，写死两个或写死一个都会在下次调整时变成静默错误。每项渲染一张 `c.qrSrc` 的 `<img onError={() => setQrFailed(true)} />` 加一个 `c.label` 标题
+- 只有一个渠道时不渲染任何渠道切换 UI，直接展示那张码
 - 手机端提示改为「长按图片 → 识别图中二维码」
+- 文案里的渠道名用 `c.label` 取，不要在 JSX 里写死「微信」二字（同一个理由）
 - 保留 `qrFailed` 降级为「收款码暂未就绪」
 - 保留**诚实的交付说明**，但改为三步：扫我付款（金额已锁定，勿修改）→ 到账后本页自动开通 → 若换了设备，点下方「获取激活码」
 - 加「我已付款，提交交易单号（选填）」折叠区：一个 input（`payerRef`）+ 两个渠道选择按钮 + 提交，成功后展示 `claimNotice`
@@ -2023,6 +2030,10 @@ git commit -m "对账脚本：按金额与时间列出待确认订单，并告�
 
 - [ ] **Step 1: 更新 README**
 
+- **补齐 Task 0 造成的文档过时**（Task 0 审查时发现，当时受"只改一个文件"的约束没动）：
+  - `README.md:306` 的注释把底层命令写成裸 `node --test`，应带上 `--import ./scripts/ts-loader.mjs`
+  - `README.md:381-385` 说 `@/lib` 别名"在 `node` 直跑时解析不了"、模块必须用相对导入 —— 挂上 loader 后这句已经不对了
+  - **尤其要紧的一条**：`README.md:382` 把 `node tests/xxx.test.mts` 当作 `spawn EPERM` 时的兜底命令，而这条兜底同样没挂 loader —— 也就是说它恰好对被修好的 `ip-hash` / `paid-loop` 仍然无效。应改为 `node --import ./scripts/ts-loader.mjs tests/xxx.test.mts`
 - 「部署 → 最小上线路径」第 2 步：SQL 清单加 `supabase/orders.sql`，并说明 `accounts.sql` 仍然不要跑
 - 「上线前务必逐条确认」加两条：
   - 收款码放到 `public/pay/`，六个文件（支付宝/微信 × ¥6.60/9.90/69.00）
@@ -2075,7 +2086,11 @@ git commit -m "文档：上线清单补收款码与订单表，待办里划掉�
 
 这部分计划里做不完，因为它依赖站长本人的账号与资质：
 
-1. **六张收款码图片**（`public/pay/`）—— 在支付宝与微信里各自「设置金额」后导出。这是 Task 8 手工验收的前置
-2. **`supabase/orders.sql` 已在生产库执行**，且 `security.sql` 的收口也执行过。跑 `check-supabase.mjs` 确认
-3. **开收款语音提醒** —— 确认唯一的人工环节不会被漏掉
-4. 走一遍完整链路：下单 → 付款 → `confirm-order.mjs` → 页面自动开通 → 再点「获取激活码」在另一台设备兑换
+1. **三张微信收款码图片**（`public/pay/wechat-*.png`）—— 这是 Task 8 手工验收的前置。三个必须满足的条件：
+   - **金额必须与 `PLANS` 一致**（改价了就连文件名一起改，文件名由价格推导）。**图片上的金额是物理的，改不了** —— 对不上就会出现「页面标 6.6、扫码付出 6.9」
+   - **必须是裁成只含二维码的方图**，不要用微信导出的竖版海报：海报缩到 200px 宽后二维码只剩约 180px，手机对着屏幕扫很勉强（同一个坑在支付宝那张上踩过并已修，见 `src/components/PaymentModal.tsx:134-145`）
+   - 裁方图顺带去掉**收款人显示名**，它不该展示给每个访客（同上注释）
+2. **裁决八字单次价格**：代码里是 6.6，站长口头报的是 6.9。二者取一后再做第 1 项
+3. **`supabase/orders.sql` 已在生产库执行**，且 `security.sql` 的收口也执行过。跑 `check-supabase.mjs` 确认
+4. **开收款语音提醒** —— 确认唯一的人工环节不会被漏掉
+5. 走一遍完整链路：下单 → 付款 → `confirm-order.mjs` → 页面自动开通 → 再点「获取激活码」在另一台设备兑换

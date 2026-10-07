@@ -198,13 +198,19 @@ export function payInstructionFor(planId: PlanId): PayInstruction;
 
 ### 6.3 收款码资源
 
-`public/pay/` 下每（渠道 × 价位）一张手存的收款码图片：
+**当前只做微信**（2026-10-07 用户决定：不做支付宝，只做微信）。
+
+`public/pay/` 下每（渠道 × 价位）一张手存的收款码图片。文件名由 `PLANS` 的价格用 `toFixed(2)` 推导，**不写死** —— 改价时文件名自动跟着变：
 
 ```
-public/pay/alipay-6.60.png   public/pay/wechat-6.60.png
-public/pay/alipay-9.90.png   public/pay/wechat-9.90.png
-public/pay/alipay-69.00.png  public/pay/wechat-69.00.png
+public/pay/wechat-6.60.png   ← PLANS.bazi.price
+public/pay/wechat-9.90.png   ← PLANS.member_month.price
+public/pay/wechat-69.00.png  ← PLANS.member_year.price
 ```
+
+`PayChannel.id` 的类型仍保留 `"alipay" | "wechat"` 两个取值，但渠道清单里当前只列微信。之所以不把类型收窄成只有 `"wechat"`：渠道集合已经被改过一次（设计时是两个，实现时变成一个），说明它是易变的；用数组承载它，将来加回支付宝只是往列表里补一行，不动类型也不动 UI。
+
+> ⚠️ **金额一致性**：收款码图片上写死的金额必须与 `PLANS` 一致。用户提供的三张图是按 6.9 / 9.9 / 69 做的，而代码里八字单次是 6.6 —— 这个不一致尚未裁决，见「待用户提供」。
 
 图片缺失时弹窗显示「暂未就绪」，复用 `PaymentModal.tsx:124` 现成的 `onError` 降级。
 
@@ -341,5 +347,10 @@ $ node --env-file=.env.local scripts/confirm-order.mjs --undo 8f3a
 
 ## 15. 待用户提供
 
-- **6 张收款码图片**（支付宝 / 微信 × ¥6.60 / ¥9.90 / ¥69.00），放 `public/pay/`
+- **3 张微信收款码图片**，放 `public/pay/`：`wechat-6.60.png`、`wechat-9.90.png`、`wechat-69.00.png`
+- ⚠️ **裁决八字单次的真实价格。** 用户报的是 6.9，代码里（`PLANS.bazi.price`）是 6.6，两处对不上。
+  必须二者取一 —— 因为收款码图片上写死的金额是物理的，改不了：
+  - 若为 6.9：改 `PLANS.bazi.price`，同步改 `tests/pricing.test.mts` 里那条断言，图片按 6.9 用
+  - 若为 6.6：图片需要重做一张
+  上线前必须确认「图片上的金额」与「`PLANS` 的金额」逐一对得上，否则用户扫出来付的钱与页面标的价不符
 - 确认现有 `public/qrcode.jpg` 是否可删除，或保留作历史兼容
