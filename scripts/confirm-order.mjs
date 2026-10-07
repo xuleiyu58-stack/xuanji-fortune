@@ -31,7 +31,9 @@ import {
 } from "../src/lib/server/order-store.ts";
 
 const DEFAULT_HOURS = 2;
-const KNOWN_FLAGS = ["hours", "id", "undo", "help"];
+/** `--help` 是不带值的开关，其余三个都必须跟一个值。 */
+const VALUE_FLAGS = ["hours", "id", "undo"];
+const KNOWN_FLAGS = [...VALUE_FLAGS, "help"];
 
 /**
  * 渠道 id → 中文名。
@@ -66,8 +68,10 @@ class Stop extends Error {
 }
 
 /**
- * 参数解析。与 gen-codes.mjs 同形（`--k v` 成对读），只多两件事：
+ * 参数解析。与 gen-codes.mjs 同形（`--k v` 成对读），只多三件事：
  *   · 认无值开关（`--help`），否则 `--help` 会被当成"值缺失"而报错
+ *   · 要值的开关少了值就报错。`--hours --id 8f3a` 里 `--hours` 若被当成
+ *     无值开关吞掉，Number(true) 会变成"最近 1 小时"，而站长以为在查 2 小时
  *   · 未知参数直接报错并打用法 —— 站长手滑打错一个字母时，
  *     静默忽略参数会让他以为"确认成功了"，而其实什么都没发生
  */
@@ -84,6 +88,9 @@ function parseArgs(argv) {
     }
     const next = argv[i + 1];
     if (next === undefined || next.startsWith("--")) {
+      if (VALUE_FLAGS.includes(name)) {
+        throw new UsageError(`--${name} 后面要跟一个值`);
+      }
       out[name] = true; // 无值开关
       continue;
     }
