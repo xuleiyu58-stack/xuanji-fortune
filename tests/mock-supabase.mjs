@@ -37,6 +37,7 @@ const db = {
   pass_consumptions: new Set(),// pass_id
   readings: [],                // { id, user_id, mode, title, result, input, created_at }
   otp: new Map(),              // email -> token（仅用于日志）
+  orders: new Map(),           // id -> 订单行（snake_case，与 public.orders 同形）
 };
 
 /** 每个 token 对应的用户。真实 Supabase 用 JWT，这里用注册表即可。 */
@@ -62,6 +63,26 @@ function mergeEnt(a, b) {
     byMode.set(p.m, prev ? { m: p.m, n: prev.n + p.n, e: Math.max(prev.e, p.e) } : { ...p });
   }
   return { member, passes: [...byMode.values()] };
+}
+
+/**
+ * 与 supabase/orders.sql 的 expire_stale_orders() 同语义：
+ * pending 且 expires_at 已过的单转 expired，返回条数。
+ *
+ * 只在 create_order 里被调用 —— 库里也一样，只有 create_order() 会
+ * `perform expire_stale_orders()`。读取路径不清扫，否则"过期单被读取"
+ * 在两条路径下会给出不同的 status（而 expired 仍必须能被 confirm 复活）。
+ */
+function expireStaleOrders() {
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const o of db.orders.values()) {
+    if (o.status === "pending" && o.expires_at < now) {
+      o.status = "expired";
+      n += 1;
+    }
+  }
+  return n;
 }
 
 // ── HTTP 工具 ───────────────────────────────────────────────
@@ -122,6 +143,9 @@ function matches(row, filters) {
     const cur = row[col];
     if (op === "eq") return String(cur) === val;
     if (op === "is") return val === "null" ? cur === null || cur === undefined : String(cur) === val;
+    // gte 用于 listRecentOrders 的 `created_at >= since`。时间戳是 ISO 串，
+    // 字典序即时间序，字符串比较就够（mem 路径用的是 Date.getTime()，等价）。
+    if (op === "gte") return String(cur) >= val;
     return true;
   });
 }
@@ -294,6 +318,85 @@ const server = createServer(async (req, res) => {
       return json(res, 200, null);
     }
 
+    // ── 订单状态机 ──────────────────────────────────────────
+    //
+    // 下面六个函数必须是 supabase/orders.sql 的逐条等价物 —— 否则契约测试
+    // 测的是"桩的行为"而不是"库的行为"。要点：
+    //   · 每个转换都是「条件不满足就返回空集」，对应 SQL 的 WHERE 前置条件
+    //   · claim_order_delivery / mark_code_issued 都要设备匹配
+    //   · confirm_order 同时接受 pending 与 expired，且 provider 走 coalesce
+    //   · unconfirm_order 有 delivered_at / code_issued_at 双闸
+
+    if (fn === "create_order") {
+      expireStaleOrders();
+      const now = new Date();
+      const row = {
+        id: randomUUID(),
+        plan: args.p_plan,
+        amount: args.p_amount,
+        status: "pending",
+        provider: null,
+        payer_ref: null,
+        device_id: args.p_device,
+        granted: null,
+        delivered_at: null,
+        code_issued_at: null,
+        paid_at: null,
+        confirmed_by: null,
+        created_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + Number(args.p_ttl_minutes) * 60_000).toISOString(),
+      };
+      db.orders.set(row.id, row);
+      return json(res, 200, [row]);
+    }
+
+    if (fn === "expire_stale_orders") {
+      return json(res, 200, expireStaleOrders());
+    }
+
+    if (fn === "confirm_order") {
+      const o = db.orders.get(args.p_id);
+      // pending 与 expired 都要能确认：用户超时后才付款是真实坏情况
+      if (!o || (o.status !== "pending" && o.status !== "expired")) return json(res, 200, []);
+      o.status = "paid";
+      o.paid_at = new Date().toISOString();
+      o.confirmed_by = args.p_by;
+      o.provider = args.p_provider ?? o.provider; // coalesce(p_provider, provider)
+      return json(res, 200, [o]);
+    }
+
+    if (fn === "claim_order_delivery") {
+      const o = db.orders.get(args.p_id);
+      // delivered_at is null 是本函数的全部意义：并发双击时只有拿到行的那个赢
+      if (!o || o.status !== "paid" || o.delivered_at !== null || o.device_id !== args.p_device) {
+        return json(res, 200, []);
+      }
+      o.delivered_at = new Date().toISOString();
+      o.granted = args.p_granted ?? null;
+      return json(res, 200, [o]);
+    }
+
+    if (fn === "mark_code_issued") {
+      const o = db.orders.get(args.p_id);
+      if (!o || o.status !== "paid" || o.code_issued_at !== null || o.device_id !== args.p_device) {
+        return json(res, 200, []);
+      }
+      o.code_issued_at = new Date().toISOString();
+      return json(res, 200, [o]);
+    }
+
+    if (fn === "unconfirm_order") {
+      const o = db.orders.get(args.p_id);
+      // 双闸：只有 delivered_at 与 code_issued_at 都为空时才允许回头
+      if (!o || o.status !== "paid" || o.delivered_at !== null || o.code_issued_at !== null) {
+        return json(res, 200, []);
+      }
+      o.status = "pending";
+      o.paid_at = null;
+      o.confirmed_by = null;
+      return json(res, 200, [o]);
+    }
+
     return json(res, 404, { message: `unknown rpc ${fn}` });
   }
 
@@ -404,6 +507,33 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    // orders：状态转换全走 RPC（见上），REST 只承担读与"提交交易单号"。
+    // PATCH 只覆盖请求里带的列 —— 与真实 PostgREST 一致，也是 setPayerRef
+    // 不拿空 provider 覆盖已有渠道所依赖的行为。
+    if (table === "orders") {
+      const wantsSingle = (req.headers.accept ?? "").includes("pgrst.object");
+
+      if (method === "GET") {
+        const rows = orderRows([...db.orders.values()].filter((r) => matches(r, filters)), url);
+        return wantsSingle
+          ? rows.length
+            ? json(res, 200, rows[0])
+            : json(res, 406, { message: "no rows" })
+          : json(res, 200, rows);
+      }
+
+      if (method === "PATCH") {
+        const body = (await readBody(req)) ?? {};
+        const hit = [...db.orders.values()].filter((r) => matches(r, filters));
+        for (const r of hit) Object.assign(r, body);
+        return wantsSingle
+          ? hit.length
+            ? json(res, 200, hit[0])
+            : json(res, 406, { message: "no rows" })
+          : json(res, 200, hit);
+      }
+    }
+
     if (table === "readings") {
       if (method === "GET") {
         const rows = orderRows(db.readings.filter((r) => matches(r, filters)), url);
@@ -455,6 +585,7 @@ const server = createServer(async (req, res) => {
     db.link_codes.clear();
     db.pass_consumptions.clear();
     db.readings.length = 0;
+    db.orders.clear();
     db.otp.clear();
     sessions.clear();
     return json(res, 200, { ok: true });
