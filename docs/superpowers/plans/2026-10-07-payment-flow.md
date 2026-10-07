@@ -18,9 +18,11 @@
 - 所有 `security definer` 的 SQL 函数必须在 `supabase/security.sql` 里补 `revoke ... from public`（`supabase/redeem.sql:35` 的注释指的就是这个坑）。
 - 服务端专用变量严禁加 `NEXT_PUBLIC_` 前缀。
 - 生产环境未配 Supabase 时一律 503 拒绝服务，不静默降级（`src/lib/server/runtime.ts` 的 `allowMemoryFallback`）。
-- 测试文件用 `node:test` + `node:assert/strict`，import 路径带 `.ts` 后缀（见 `tests/entitlement-merge.test.mts`）。
-- 测试运行命令：`node --test`（`package.json` 的 `test` 脚本）。
-- TypeScript 目标为 ES5（`tsconfig.json` 未设 target）。字符串展开 `[...str]` 会触发 TS2802，需用 `Array.from()`；`Uint8Array` 展开安全（`src/lib/server/account-store.ts:57` 是既有先例）。
+- 测试文件用 `node:test` + `node:assert/strict`。直接 import `src/` 模块时写相对路径带 `.ts` 后缀（见 `tests/entitlement-merge.test.mts`）。
+- 测试运行命令：`node --test --import ./scripts/ts-loader.mjs`（Task 0 落地后的 `package.json` `test` 脚本）。裸 `node --test` 解析不了 `@/` 别名。
+- `tsconfig.json` 的 `target` 是 `ES2020`，`allowImportingTsExtensions` 已打开。`src/lib/server/codes.ts:30` 有一条注释说 target 未设、需用 `Array.from()` 绕开 TS2802 —— **那条注释已经过时**，不要再照着它写。
+- 应用代码之间用 `@/` 别名且不带扩展名。挂上 `ts-loader` 后 `@/` 在 `node --test` 下同样可解析，所以新模块**不必**为了可测而改用相对导入。
+- `tests/*-contract.test.mts` 这类文件是把源码当文本读进来做字符串断言，不 import 源码。真正 import 源码的测试以 `tests/entitlement-merge.test.mts` 为准。
 - 提交信息用中文，格式 `主体：为什么`（见 `git log`）。
 
 ## 文件结构
@@ -62,6 +64,80 @@
 public/pay/alipay-6.60.png   public/pay/wechat-6.60.png
 public/pay/alipay-9.90.png   public/pay/wechat-9.90.png
 public/pay/alipay-69.00.png  public/pay/wechat-69.00.png
+```
+
+---
+
+### Task 0: 修好测试基线（预存故障）
+
+分支起点上 `npm test` 是红的，而且比看起来更糟。
+
+`tests/ip-hash.test.mts` 与 `tests/paid-loop.test.mts` 在 **import 阶段**就崩，原因是裸 `node --test` 解析不了 `@/lib` 别名：
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@/lib'
+  imported from .../src/lib/server/usage-store.ts
+```
+
+崩溃发生在注册测试之前，所以这两个文件里的用例**根本没跑**。实测对比：
+
+| 命令 | 测试数 | 通过 | 失败 |
+|---|---|---|---|
+| `node --test` | 411 | 409 | 2 |
+| `node --test --import ./scripts/ts-loader.mjs` | **431** | 431 | 0 |
+
+差的 20 个不是修复带来的，是一直没跑的那批。
+
+`scripts/ts-loader.mjs` 本来就是为这件事写的（它的注释：「让裸 node 能直接 import `src/` 下的应用代码」），只是 `package.json` 的 test 脚本没挂上它。
+
+**Files:**
+- Modify: `package.json`
+
+**Interfaces:**
+- Consumes: 无
+- Produces: `npm test` 全绿；此后 `node --test` 的所有调用点都必须带 `--import ./scripts/ts-loader.mjs`（本计划后续任务的验证命令已按此写好）
+
+- [ ] **Step 1: 记录修复前的状态**
+
+Run: `npm test 2>&1 | grep -E "^ℹ (tests|pass|fail)"`
+Expected: `tests 411` / `pass 409` / `fail 2`（用来确认你确实复现了这个问题）
+
+- [ ] **Step 2: 改 test 脚本**
+
+`package.json` 的 `scripts.test` 由：
+
+```json
+"test": "node --test"
+```
+
+改为：
+
+```json
+"test": "node --test --import ./scripts/ts-loader.mjs"
+```
+
+不要动其它脚本。`ts-loader.mjs` 只注册一个解析钩子，不转译 —— Node 24 本身能擦除类型直接跑 `.ts`。
+
+- [ ] **Step 3: 验证**
+
+Run: `npm test 2>&1 | grep -E "^ℹ (tests|pass|fail)"`
+Expected: `tests 431` / `pass 431` / `fail 0`
+
+若数字不是 431，说明本机的测试集合与写计划时不同（新增或删除了测试文件）。**只要 `fail 0` 即可**，不要为了凑数字去改动测试。
+
+- [ ] **Step 4: 确认没有把别的东西带坏**
+
+Run: `npx tsc --noEmit`
+Expected: 无错误
+
+Run: `npm run build`
+Expected: 构建成功
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add package.json
+git commit -m "测试挂上 ts-loader：别名解析不了，两个文件整批用例一直没跑"
 ```
 
 ---
@@ -128,7 +204,7 @@ test("isPlanId 只认已知计划", () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/pricing.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/pricing.test.mts`
 Expected: FAIL —— `PLANS` 未定义 / 导入报错
 
 - [ ] **Step 3: 实现**
@@ -209,10 +285,10 @@ export const MEMBER_PLANS: ReadonlyArray<MemberPlan> = [
 
 - [ ] **Step 4: 跑测试确认通过，并跑全量回归**
 
-Run: `node --test tests/pricing.test.mts tests/no-hardcoded-prices.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/pricing.test.mts tests/no-hardcoded-prices.test.mts`
 Expected: PASS
 
-Run: `node --test`
+Run: `node --test --import ./scripts/ts-loader.mjs`
 Expected: 全绿。若 `no-hardcoded-prices.test.mts` 失败，说明有地方没走派生，回去改成从 `PLANS` 取。
 
 - [ ] **Step 5: 提交**
@@ -270,7 +346,7 @@ test("mintCode 不重复", () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/codes-mint.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/codes-mint.test.mts`
 Expected: FAIL —— `mintCode` 未导出
 
 - [ ] **Step 3: 实现**
@@ -321,7 +397,7 @@ Expected: 正常打印用法，无 import 报错
 
 （该脚本真正发码需要 Supabase，本步只验证它能启动。）
 
-Run: `node --test tests/codes-mint.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/codes-mint.test.mts`
 Expected: PASS
 
 - [ ] **Step 6: 提交**
@@ -602,7 +678,7 @@ test("年卡拼出 69.00 而不是 69", () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/pay.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/pay.test.mts`
 Expected: FAIL —— 找不到 `../src/lib/pay.ts`
 
 - [ ] **Step 3: 实现**
@@ -660,7 +736,7 @@ export function payInstructionFor(planId: PlanId): PayInstruction {
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `node --test tests/pay.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/pay.test.mts`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -826,7 +902,7 @@ test("列表按创建时间倒序", async () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/order-store.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-store.test.mts`
 Expected: FAIL —— 找不到模块
 
 - [ ] **Step 3: 实现**
@@ -1081,7 +1157,7 @@ export async function listRecentOrders(sinceMs: number): Promise<OrderRow[]> {
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `node --test tests/order-store.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-store.test.mts`
 Expected: PASS
 
 - [ ] **Step 5: 把 `orders` 加进 mock-supabase（若契约测试要用）**
@@ -1090,7 +1166,7 @@ Expected: PASS
 
 在 mock 的 RPC 分发表里加上六个新函数的内存实现，语义与 `supabase/orders.sql` 逐条一致（特别是 `claim_order_delivery` 必须只在 `delivered_at is null` 时返回行）。REST 侧加上 `orders` 的 `select`/`update` 支持。
 
-Run: `node --test tests/account-contract.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/account-contract.test.mts`
 Expected: 仍然全绿（确认没有破坏既有 mock 行为）
 
 - [ ] **Step 6: 提交**
@@ -1133,7 +1209,7 @@ git commit -m "订单数据层：状态转换全部交给数据库函数，内�
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/order-contract.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-contract.test.mts`
 Expected: FAIL —— 路由不存在，404
 
 - [ ] **Step 3: 实现建单路由**
@@ -1386,10 +1462,10 @@ export async function GET(req: NextRequest) {
 
 - [ ] **Step 5: 跑契约测试**
 
-Run: `node --test tests/order-contract.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-contract.test.mts`
 Expected: PASS
 
-Run: `node --test`
+Run: `node --test --import ./scripts/ts-loader.mjs`
 Expected: 全绿
 
 - [ ] **Step 6: 提交**
@@ -1427,7 +1503,7 @@ git commit -m "建单与轮询路由：金额只由服务端定，交付靠数�
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/order-contract.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-contract.test.mts`
 Expected: FAIL —— 两个路由不存在
 
 - [ ] **Step 3: 实现 `/api/order/claim`**
@@ -1634,10 +1710,10 @@ export async function POST(req: NextRequest) {
 
 - [ ] **Step 5: 跑测试**
 
-Run: `node --test tests/order-contract.test.mts`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/order-contract.test.mts`
 Expected: PASS
 
-Run: `node --test`
+Run: `node --test --import ./scripts/ts-loader.mjs`
 Expected: 全绿
 
 - [ ] **Step 6: 提交**
@@ -1846,7 +1922,7 @@ const handleFetchCode = async () => {
 
 `tests/home-experience.test.mjs` 是对源文件做字符串断言。搜索其中与 `qrcode.jpg`、`已付款`、`price=` 相关的断言，按新文案与新 props 更新。**不要**为了让它通过而保留已删除的旧行为。
 
-Run: `node --test tests/home-experience.test.mjs`
+Run: `node --test --import ./scripts/ts-loader.mjs tests/home-experience.test.mjs`
 Expected: PASS
 
 - [ ] **Step 8: 类型检查与构建**
@@ -1966,7 +2042,7 @@ git commit -m "对账脚本：按金额与时间列出待确认订单，并告�
 
 - [ ] **Step 3: 全量验证**
 
-Run: `node --test`
+Run: `node --test --import ./scripts/ts-loader.mjs`
 Expected: 全绿
 
 Run: `npx tsc --noEmit && npm run build`
