@@ -7,7 +7,16 @@
 # 前提：域名必须已经解析到这台服务器的公网 IP。没解析就申请不到证书，
 # Caddy 会一直重试并打日志（docker compose logs caddy 能看到）。
 
-{$DOMAIN} {
+# ⚠️ www 必须一起写上。
+#
+# DNS 里 `www` 也有一条 A 记录指向本机（见 docs/deploy-hongkong.md 第 1 步），
+# 而 Caddy 只服务它配置里**明确列出的**站点地址。只写裸域的话，
+# 访问 www 时 Caddy 没有对应的站点，TLS 握手会直接失败 ——
+# 浏览器报的是「此站点的连接不安全 / 发送了无效的响应」，
+# 而裸域一切正常。这个错误我已经犯过一次。
+#
+# 两个地址写在同一个块里，Caddy 会申请一张同时含两个 SAN 的证书。
+{$DOMAIN}, www.{$DOMAIN} {
 	encode zstd gzip
 	reverse_proxy app:3000
 }
