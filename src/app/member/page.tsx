@@ -115,7 +115,7 @@ export default function MemberPage() {
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
         title={`${selectedPlan.name} · 开通`}
-        price={formatPrice(selectedPlan.price)}
+        plan={selectedPlan.id}
         onRedeem={redeemActivationCode}
       />
       <Footer />

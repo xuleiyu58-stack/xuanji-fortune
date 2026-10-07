@@ -218,7 +218,7 @@ export default function FortuneForm({ mode, title, description }: Props) {
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
         title={title}
-        price={formatPrice(modeInfo.price)}
+        plan="bazi"
         onRedeem={redeemActivationCode}
         alreadyUnlocked={unlocked}
       />

@@ -124,7 +124,12 @@ export const MODES: Record<Mode, ModeInfo> = {
 };
 
 export interface MemberPlan {
-  id: string;
+  /**
+   * 收窄成 `PlanId` 而不是 `string`：会员页要把这个 id 交给 `PaymentModal`
+   * 去建单，而建单只认 PLANS 里存在的计划。写成 `string` 的话，`MEMBER_PLANS`
+   * 里手滑拼错一个 id，编译期一声不吭，用户点下去才会看到"该套餐不存在"。
+   */
+  id: PlanId;
   name: string;
   price: number;
   days: number;
