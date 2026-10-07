@@ -176,14 +176,22 @@ test("写凭证的位置是封闭的一份名单", () => {
   //   · fortune / ask   消耗单次券后回写 n-1
   //   · entitlement     顺带清理过期凭证
   //   · chart           只读排盘的接口，把"从账户补签"的凭证写回
+  //   · order/status    订单到账后就地签发权益
   //   · pass-cookie     定义处本身
   //
   // 多出来的写入点意味着多一条能凭空造权益的路径，所以这条断言必须逐个点名。
+  //
+  // `order/status` 凭什么在前几类之外还成立：它与 `redeem` 是**同一性质**的写入点 ——
+  // 都不是"凭请求里的东西现算一份权益"，而是凭一次**服务端的原子授权**签发：
+  // redeem 凭数据库原子核销掉的激活码（一码一次），order/status 凭数据库原子抢占到的
+  // 订单交付权（`claim_order_delivery` 要求 `status='paid'` + 设备匹配 + 首次交付）。
+  // 两者都只把这份授权翻译成 cookie，本身没有"要不要放行"的裁量权。
   const KNOWN = [
     "app/api/ask/route.ts",
     "app/api/chart/route.ts",
     "app/api/entitlement/route.ts",
     "app/api/fortune/route.ts",
+    "app/api/order/status/route.ts",
     "app/api/redeem/route.ts",
     "lib/server/pass-cookie.ts",
   ].sort();
@@ -199,7 +207,39 @@ test("新增的写入点只能回写已验签的凭证，不得自行构造权�
   // `ent` 与 `entitlement` 是同一个东西的两个本地名：前者是 `withPassCookie`
   // 定义处的形参名，后者是路由里 `ensurePassCookie(req)` 解构出来的变量名。
   // 两个都得在名单里，否则改个变量名就会误报（真发生过）。
-  const ALLOWED_ARGS = ["next", "ent", "entitlement", "reissued", "guard.reissued", "null"];
+  //
+  // ## `snapshot` 为什么也在名单里（这一条与名单里其它项性质不同，必须写清理由）
+  //
+  // 它是 `order/status` 在**响应丢失后重签**时用的那份权益，来自订单行上的
+  // `orders.granted` —— 不是现场构造的，是**恢复一份已经被正当授予过的权益**。
+  //
+  // 凭什么说它"已经被正当授予过"：`granted` 那一列**只可能由 `claim_order_delivery`
+  // 写入**（见 supabase/orders.sql），而那个函数带三个前置条件 ——
+  // `status = 'paid'`、`device_id = p_device`、`delivered_at is null`。
+  // 也就是说：写进去的那份权益，必然是在"这单确实付过钱、而且是这个设备"的前提下，
+  // 由服务端在抢占成功的那一刻算出来的。它躺在库里，不在用户手里。
+  //
+  // 为什么非要恢复不可：交付成功、cookie 也签好了，但响应在网络上丢了 ——
+  // 用户手里什么都没有，而订单已标记交付（`delivered_at` 非空，不会再交付第二次）。
+  // 不重签，用户就是钱付了、权益没有、重试也没用。
+  //
+  // 为什么不会变成"复活已用掉的券"：路由**只在请求完全不带权益 cookie 时**
+  // 才用快照重签；带着 cookie 就什么都不做（cookie 可能是"刚消费过"的那一份，
+  // 拿快照盖上去等于把用掉的券还回来）。判断在 `lib/order-flow.ts` 的分支 3/4，
+  // 由 `tests/order-flow.test.mts` 钉住。
+  //
+  // 换句话说：允许的是"把一处**库里已授权的**权益搬回浏览器"，不是"在路由里造权益"。
+  // 若将来有人把 `snapshot` 换成一个现算的 ent，这条守卫看不见 —— 所以上面这段
+  // 就是它唯一的防线，改这块之前先读这里。
+  const ALLOWED_ARGS = [
+    "next",
+    "ent",
+    "entitlement",
+    "reissued",
+    "guard.reissued",
+    "snapshot",
+    "null",
+  ];
   const PARAM_DECL = /ent:\s*Entitlement/; // 定义处（pass-cookie.ts）的参数声明
 
   // 调用点只允许传"已经存在的那份权益"，补编号由 `withPassCookie` 内部统一做 ——
