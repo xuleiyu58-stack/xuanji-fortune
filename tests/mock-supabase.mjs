@@ -25,7 +25,6 @@ import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 
 const PORT = Number(process.argv[2] ?? 54321);
-const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 // ── 内存表 ──────────────────────────────────────────────────
 const db = {

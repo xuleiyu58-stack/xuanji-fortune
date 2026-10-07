@@ -2,7 +2,10 @@ import { randomBytes } from "node:crypto";
 import { admin, allowMemoryFallback, envValue } from "@/lib/server/runtime";
 
 /**
- * 激活码核销。
+ * 激活码：**发码**与核销。
+ *
+ * 发码只有 `mintCode()` 一处实现（订单自动发码与 `scripts/gen-codes.mjs` 共用）——
+ * 生成与核销各写一份字符集，任何一份被改动，都会让"生成的码核销不了"只在线上出现。
  *
  * 核销的原子性由数据库保证（supabase/redeem.sql 的 redeem_code 函数），
  * 这里只负责取参数、调函数、翻译结果。
@@ -45,7 +48,9 @@ export function normalizeCode(raw: string): string {
 export function isValidCodeFormat(code: string): boolean {
   // Array.from 与 [...code] 都按码点迭代，判定结果一致 —— 保留前者只是历史选择。
   // （早先说 tsconfig 未设 target、展开会触发 TS2802 已不成立：target 显式设了 ES2020。）
-  return code.length === 16 && Array.from(code).every((ch) => ALPHABET.includes(ch));
+  // 长度读 CODE_LENGTH 而不是硬写 16：两者一旦不同步，mintCode() 会产出
+  // 校验器拒绝的码 —— 正是上面注释里担心的"生成的码核销不了"。
+  return code.length === CODE_LENGTH && Array.from(code).every((ch) => ALPHABET.includes(ch));
 }
 
 const memoryCodes = new Map<string, { kind: string; mode: string | null; days: number }>();

@@ -27,18 +27,26 @@ src/app/            页面与接口
   terms/ privacy/ disclaimer/   法律页
   api/fortune       首次解读（收钱的那一步）
   api/ask           追问（与首次解读共用同一道闸门）
+  api/order         建单（金额只由服务端从 pricing.ts 取）
+  api/order/status  轮询到账；订单转 paid 且是本设备 → 就地签发权益
+  api/order/claim   提交交易单号（只是对账锚点，不等于到账）
+  api/order/code    跨设备兜底：把已到账的订单当场换成一张激活码
   api/redeem        激活码核销 → 签发凭证
   api/entitlement   查询当前权益
 src/lib/
   bazi/             排盘算法（可单测，拆成多个叶子模块）
   access.ts         放行判定（纯函数，零 import）
   entitlement.ts    凭证签发/验签/合并/消耗（纯函数，只依赖 node:crypto）
+  order-flow.ts     订单状态判定（纯函数，所以能被 node --test 直接跑）
+  pay.ts            收款渠道与收款码路径（将来换聚合支付只动这一处）
   server/           Supabase 读写、限流、凭证 cookie
   pricing.ts        全站价格与额度的唯一出处
   disclaimer.ts     免责声明（服务端与客户端共用）
 src/components/     界面组件
 supabase/           建表 SQL
-scripts/gen-codes.mjs  批量发码
+scripts/gen-codes.mjs      批量发码（人工补发用）
+scripts/confirm-order.mjs  对账与人工确认到账（站长每天用的那一条命令）
+scripts/export-codes.mjs   导出激活码清单
 ```
 
 ## 本地开发
@@ -88,22 +96,32 @@ DEV_REDEEM_CODES=XMEMBERDEV30AAA1:member::30,XBAZPASS0000001A:single:bazi:1
 
 ## 数据库初始化
 
-在 Supabase 控制台的 SQL Editor 里**按顺序**执行。前三个是收费闭环的必需项，
-第四个是账号功能（可选）：
+在 Supabase 控制台的 SQL Editor 里**按顺序**执行。前五个是收费闭环的必需项，
+最后一个是账号功能（可选）：
 
 | 顺序 | 文件 | 建什么 | 必需 |
 |---|---|---|---|
 | 1 | `supabase/schema.sql` | `usage` 表 + `bump_usage` 函数（限流计数） | ✅ |
 | 2 | `supabase/redeem.sql` | `redeem_codes` 表 + `redeem_code` 函数（激活码核销） | ✅ |
 | 3 | `supabase/ledger.sql` | `pass_consumptions` 表（单次券防重放） | ✅ |
-| 4 | `supabase/accounts.sql` | 账号与记录上云的四张表 + 三个函数 | 可选 |
+| 4 | `supabase/orders.sql` | `orders` 表 + 六个订单函数（建单/确认/交付/发码/撤销/过期清理） | ✅ |
+| 5 | `supabase/security.sql` | 安全收口：把函数从匿名角色手里拿回来 | ✅ |
+| 6 | `supabase/accounts.sql` | 账号与记录上云的四张表 + 三个函数 | 可选 |
 
 **第 3 个容易漏，漏了会出真故障。** 它原先在 `accounts.sql` 里 —— 那是个
 分层错误：单次券的防重放跟账号体系毫无关系。只做最小上线的人不跑
 `accounts.sql`，于是点击付费解读时找不到消费台账，服务端按"宁可拒绝也不放行"
 处理，**付了钱的用户直接 503 排不了盘**。已拆成独立文件。
 
-四个文件都写了 `if not exists`，重复执行是安全的。
+**`security.sql` 必须排在 `orders.sql` 之后，顺序不能反。** 它用
+`revoke ... on all functions in schema public` 一次性收掉全库的默认授权，
+代价是**只覆盖它执行那一刻已存在的函数**。先跑它再跑 `orders.sql`，
+那六个订单函数就会带着 Postgres 建函数时默认的 `grant execute ... to public`
+上线，在 PostgREST 里匿名可调 —— 其中 `confirm_order` 是白嫖入口：
+确认任意一张订单，`claim_order_delivery` 就签得出权益。
+
+这些文件都写了 `if not exists` 或 `create or replace`，`security.sql` 另有
+`to_regprocedure` 判断兜住"函数还不存在"的情况，所以重复执行都是安全的。
 
 配完先跑一次体检，别直接启动应用：
 
@@ -184,13 +202,11 @@ Project Settings → API：
 
 **第 2 步 · 建表**
 
-SQL Editor → New query，依次执行三个文件（每个都写过 `if not exists`，重复执行安全）：
+SQL Editor → New query，按上面「数据库初始化」那节的顺序把六个文件跑完
+（`schema` → `redeem` → `ledger` → `orders` → `security` → `accounts`）。
 
-1. `supabase/schema.sql` —— `usage` 表与 `bump_usage`
-2. `supabase/redeem.sql` —— `redeem_codes` 表与 `redeem_code`
-3. `supabase/accounts.sql` —— 账号相关的四张表与三个函数
-
-**只做激活码不做账号的话，第 3 个可以跳过。**
+**只想做激活码、不做账号的话，最后的 `accounts.sql` 可以跳过**；其余五个
+都是收费闭环的必需项，其中 `security.sql` 必须排在 `orders.sql` 之后（理由见那节）。
 
 **第 3 步 · 打开邮箱登录**
 
@@ -291,21 +307,96 @@ Authentication → Email Templates → **Magic Link**，把正文里的
 不一致的表现是「本地跑通、线上算错」，而且不报错 —— 只会让某个用户的
 会员少几天。`tests/entitlement-merge.test.mts` 专门钉这件事。
 
+## 收款与到账确认
+
+**这一节是站长每天真正要用的东西。**
+
+支付是**方案 A（零资质）**：个人微信收款码 + 人工确认到账。命理类过不了
+ICP 备案、也开不了官方支付商户号，所以没有回调能力 —— 这是资质问题，不是
+代码问题。将来拿到聚合支付资质时，改的是 `src/lib/pay.ts` 加弹窗里一个 case，
+订单表、状态机、路由、权益签发全都不用动。
+
+**收款码是静态资源**，三个价位各一张，放在 `public/pay/`：
+
+| 套餐 | 价格 | 收款码 |
+|---|---|---|
+| 八字命理（单次） | ¥6.60 | `public/pay/wechat-6.60.png` |
+| 月卡 | ¥9.90 | `public/pay/wechat-9.90.png` |
+| 年卡 | ¥69.00 | `public/pay/wechat-69.00.png` |
+
+文件名由 `qrSrcFor(渠道, 金额)` 拼出来，金额固定两位小数（`69` 与 `69.00`
+会指向两张不同的图，而只有一张存在）。**价格的唯一出处是 `src/lib/pricing.ts`**，
+上表的数字必须与它一致；改价是「改 `PLANS` 一行 + 重做对应图片」两件事 ——
+**图片上的金额是物理的**，不重做图，`qrSrcFor` 就找不到文件、弹窗显示
+「暂未就绪」。宁可显示未就绪，也不要出现「页面标 6.60、扫码付出 6.90」。
+
+用户流程：选套餐 → 扫码付款 → 页面停在「等待到账…」上轮询 → **你确认到账** →
+页面几秒内自动开通（权益签发给下单那台设备）。手机付款、电脑在用这类
+跨设备场景，用户可在页面上点「获取激活码」，服务端当场发一张码让他去
+另一台设备兑换。
+
+### 确认到账：`scripts/confirm-order.mjs`
+
+付款链路里**唯一的人工环节**，所以它只做三件事，每件的输出都要一眼看懂。
+
+```bash
+# 列出最近 2 小时的订单（默认）—— 每天先跑这一条
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/confirm-order.mjs
+
+# 时间窗改成最近 8 小时
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/confirm-order.mjs --hours 8
+
+# 确认到账。id 支持前缀，通常打 4 位就够区分
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/confirm-order.mjs --id 8f3a
+
+# 撤销一次误确认（已交付 / 已发码的单会被拒绝，并说明为什么）
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/confirm-order.mjs --undo 8f3a
+
+# 忘了参数就 --help（它不需要配库也能打出来）
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/confirm-order.mjs --help
+```
+
+在服务器上跑时把 `--env-file=.env.local` 换成 `deploy/.env.production`。
+和发码脚本一样，`--import ./scripts/ts-loader.mjs` 是必需的 —— 它复用
+`src/lib/server/order-store.ts`，而那条 import 链上有 `@/` 别名。
+
+**⚠️ 那个坑：`--id` / `--undo` 只在 `--hours` 的窗口里找单。** 默认窗口是最近
+**2 小时**，脚本先拉窗口内的单、再在里面按前缀收敛。早上 8 点去确认昨晚
+23:50 那一笔，窗口早滑过去了，脚本会回「没找到以「xxxx」开头的订单」——
+那不是订单不存在，是它落在窗口外。加上 `--hours 12`（或更大）再来一次。
+
+列表里带 ⚠ 的行要主动处理：`paid ⚠未领取` 表示用户付了钱，既没自动领到、
+也没来取码 —— 很可能以为付款没成功就走了，建议主动发码。这是差评与退款的
+来源，不该等用户来问。
+
 ## 发码
 
 ```bash
-node --env-file=.env.local scripts/gen-codes.mjs --kind member --days 30 --count 20 --batch 2026-10
-node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --count 50 --batch 2026-10
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs --kind member --days 30 --count 20 --batch 2026-10
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --count 50 --batch 2026-10
 ```
 
+`--import ./scripts/ts-loader.mjs` 同样是必需的：脚本复用
+`src/lib/server/codes.ts` 的 `mintCode()`，而那个模块内部用 `@/` 别名 import ——
+裸 node 解析不了，会 `ERR_MODULE_NOT_FOUND`。
+
 一次生成一批，别逐单盯着。用户付款后把其中一个发给他，站内输入即解锁。**一码一用。**
+
+付款的**主路径已经不靠发码**了（见上一节）：扫码付款 → 你确认到账 → 自动开通。
+跨设备兜底也由服务端当场发码（`/api/order/code` 自己 `mintCode()` 写进
+`redeem_codes`），不吃这里预生成的批次。所以 `gen-codes.mjs` 现在是
+**人工补发**用的：线下收款、权益出问题时手发一张、给老用户补偿。
+发码脚本需要 Supabase 配置，内存兜底的 `DEV_REDEEM_CODES` 只用于本地自测。
 
 ## 测试
 
 ```bash
-npm test          # node --test，直接跑 TypeScript（Node 22+ 原生类型擦除）
+npm test          # = node --test --import ./scripts/ts-loader.mjs
 npx tsc --noEmit
 ```
+
+`npm test` 用的是 Node 的原生类型擦除（直接跑 `.ts` / `.mts`，不转译），
+loader 只做两件事：解析 `@/` 别名、把无扩展名的目录导入补成 `index.ts`。
 
 测试里有若干**外部可交叉验证的锚点**，改算法前先看它们：
 
@@ -327,6 +418,11 @@ npx tsc --noEmit
 | `legal-pages` | 法律页真实存在、页脚无死链、联系方式同源、`.env.example` 不漏变量 |
 | `route-contract` | 先判额度再调 AI；记账在成功之后 |
 | `home-experience` | 客户端组件不得值导入服务端重模块 |
+| `pay` | 收款码文件名由 `PLANS` 推导，金额固定两位小数（`69` 与 `69.00` 指向两张不同的图） |
+| `codes-mint` | 发码只此一处；`mintCode()` 产出的码必然过得了核销的格式校验 |
+| `order-flow` | 订单状态六个分支；判定住在 `lib/`（路由 import 不了 `next/server`） |
+| `order-store` | 内存兜底与 `supabase/orders.sql` 的六个函数逐条同语义 |
+| `order-claim-code` | 交易单号收单与兜底发码的判定；路由确实只是适配层 |
 
 `home-experience` 里那条依赖扫描值得说明：`lunar-typescript` 有 1.33MB，
 区划表 61KB，它们都只该在服务端。`import type` 会被完全擦除，所以不算违规。
@@ -373,16 +469,47 @@ WEBCLI_ALLOW_LOCAL=1 npx agentbrowse open http://localhost:3121/login
 **它不能替代真机联调。** 桩验的是我们自己的接线与语义，
 `supabase/*.sql` 的语法、RLS 策略、真实 Auth 发信流程都必须在真项目上验一遍。
 
+### 支付链路的端到端验证（对着同一套桩跑）
+
+`npm test` 覆盖不到两层东西：`order-store` 的 **RPC 路径**（单测跑的是内存兜底，
+六个订单函数一次也没真跑过 —— 桩里若有镜像 bug，测试就对着错误的 oracle 判绿），
+以及订单路由的**真接线**（它们 import 了 `next/server`，裸 node 解析不了）。
+`tests/order-e2e.mjs` 把这两层补上：
+
+```bash
+# 终端 A：启动桩
+node tests/mock-supabase.mjs 54321
+
+# 终端 B：用指向桩的变量起 dev server
+#   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+#   SUPABASE_SERVICE_ROLE_KEY=test-service-role
+npx next dev -p 3121
+
+# 终端 C：
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_SERVICE_ROLE_KEY=test-service-role \
+APP_URL=http://localhost:3121 \
+node --import ./scripts/ts-loader.mjs tests/order-e2e.mjs
+```
+
+它让 `create_order` / `claim_order_delivery` / `confirm_order` /
+`mark_code_issued` / `unconfirm_order` / `expire_stale_orders` 全部真跑一遍。
+
 ### 测试里踩过的坑（别重复）
 
 - **Crockford base32 没有 I L O U。** 手写测试用码两次踩到（`...SINGLE1A`、
   `...FOCUS01AAAA`），都被格式校验拒掉，而错误信息只说「激活码无效」，
   很容易误判成实现有问题。`tests/account-e2e.mjs` 现在按字母表拼码。
 - **`npm test` 用 `node --test` 直接跑 `.mts`。** 但在某些沙箱环境里
-  `node --test` 会因 fork 被拦而报 `spawn EPERM`；此时逐个
-  `node tests/xxx.test.mts` 仍可跑通。
-- **`~/lib` 别名在 `node` 直跑时解析不了。** 需要被单测直接引用的模块
-  要用相对路径 import（`lib/entitlement-merge.ts` 就是因此单独拆出来的）。
+  `node --test` 会因 fork 被拦而报 `spawn EPERM`；此时逐个跑仍可以，但
+  **loader 不能省**：`node --import ./scripts/ts-loader.mjs tests/xxx.test.mts`。
+  漏了它，凡是用 `@/` 别名 import 的用例（`ip-hash`、`paid-loop` 等）会整批
+  `ERR_MODULE_NOT_FOUND` —— 而这个兜底命令存在的意义正是"换个跑法确认实现没问题"，
+  少挂 loader，就刚好对它本该救的那几个文件无效。
+- **`@/lib` 别名不再是障碍。** 挂上 `scripts/ts-loader.mjs` 后，单测与脚本都能
+  直接 import 用别名的模块 —— 当年"因为 node 不认别名、只能写相对导入"的那条限制
+  已经不成立了（`lib/entitlement-merge.ts` 当时就是被这条限制逼着单独拆出来的；
+  文件保留是因为它本身是一层独立逻辑，不是因为导入限制）。
 
 ## 部署
 
@@ -395,14 +522,19 @@ WEBCLI_ALLOW_LOCAL=1 npx agentbrowse open http://localhost:3121/login
 [supabase.com](https://supabase.com) → New project，区域选东京或新加坡。
 免费额度对本站绰绰有余。等初始化完成。
 
-**2. 跑两个 SQL**
+**2. 跑五个 SQL（顺序不能反）**
 
 SQL Editor → New query，依次执行：
 
-- `supabase/schema.sql` —— 限流计数（**这个不做，生产环境每次排盘都会 503**）
-- `supabase/redeem.sql` —— 激活码核销
+1. `supabase/schema.sql` —— 限流计数（**这个不做，生产环境每次排盘都会 503**）
+2. `supabase/redeem.sql` —— 激活码核销
+3. `supabase/ledger.sql` —— 单次券防重放（**漏了会出真故障**：付了钱的用户直接 503 排不了盘）
+4. `supabase/orders.sql` —— 订单表与六个订单函数（建单/确认/交付/发码/撤销/过期清理）
+5. `supabase/security.sql` —— 安全收口。**必须在 `orders.sql` 之后** ——
+   它用的是 `on all functions in schema`，只覆盖它执行那一刻已存在的函数，
+   跑在前面就会漏掉订单那六个（其中 `confirm_order` 是白嫖入口）
 
-`accounts.sql` **不要跑** —— 那是账号功能用的。
+`accounts.sql` **不要跑** —— 那是账号功能用的，与收费闭环无关。
 
 **3. 填环境变量，然后先跑体检**
 
@@ -430,8 +562,9 @@ node --env-file=.env.local scripts/check-supabase.mjs
 ```
 
 它会逐项验证：变量有没有贴错（`service_role` 误填成 `anon` 是最常见的坑）、
-连不连得上、三张表建了没、五个数据库函数齐不齐、Auth 邮件登录开没开。
+连不连得上、该有的表建了没、数据库函数齐不齐、Auth 邮件登录开没开。
 失败时会直接告诉你**去哪一步做什么**，而不是等到运行时冒一句含糊的 503。
+（没跑 `orders.sql` 时，`orders` 表与六个订单函数会被逐条标出来 —— 那是预期的未完成项。）
 
 配错 Supabase 的失败方式都很沉默 —— SQL 只跑了一半、钥匙贴串了，
 表现都是 503 或 401。从那里往回查很费时间，这个脚本是省那段时间的。
@@ -440,18 +573,23 @@ node --env-file=.env.local scripts/check-supabase.mjs
 > 不会消耗任何激活码。介意的话在 SQL Editor 里删掉：
 > `delete from public.usage where key = '__preflight_probe__';`
 
-**4. 发码**
+**4. 发码（人工补发用，不是主路径）**
 
 ```bash
-node --env-file=.env.local scripts/gen-codes.mjs --kind member --days 30 --count 20 --batch 2026-10
-node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --count 50 --batch 2026-10
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs --kind member --days 30 --count 20 --batch 2026-10
+node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --count 50 --batch 2026-10
 ```
 
 注意：发码脚本需要 Supabase 配置，**内存兜底的 `DEV_REDEEM_CODES` 只用于本地自测**。
+付款的主路径是「扫码 → `confirm-order.mjs` 确认 → 自动开通」，预生成一批码是兜底。
 
 **5. 部署**
 
 推到 GitHub → Vercel 导入 → 填第 3 步的变量 → 部署。
+
+> 大陆用户直连 Vercel 常常打不开。仓库里还有一套**香港服务器**部署套件
+> （免备案、Docker Compose + Caddy 自动 HTTPS）：`deploy/` 下三个文件，
+> 步骤见 `docs/deploy-hongkong.md`。两套二选一，环境变量是同一套。
 
 ### 之后再开账号
 
@@ -464,12 +602,29 @@ node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --cou
   控制台的上限才防得住代码本身出错。这条最重要，别跳
 - 确认 `SUPABASE_SERVICE_ROLE_KEY` 与 `PASS_SECRET` 都**没被加** `NEXT_PUBLIC_` 前缀
   （加了就会被打进浏览器包，等于公开）
-- **删掉 `.env.local` 与 Vercel 环境变量里的 `DEV_REDEEM_CODES`** ——
+- **删掉 `.env.local` 与部署环境变量里的 `DEV_REDEEM_CODES`** ——
   那是内存兜底码，生产环境留着它等于开后门
-- 收款码放到 `public/qrcode.jpg`（缺失时弹窗显示"暂未就绪"，不会裂图）
+- **`supabase/orders.sql` 与 `supabase/security.sql` 都在生产库执行过，且顺序是
+  `orders.sql` 在前**（反了会让六个订单函数匿名可调）。跑
+  `scripts/check-supabase.mjs` 确认
+- **⚠️ 确认 `service_role` 仍有 EXECUTE。** `security.sql` 的收口撤掉了 PUBLIC
+  的默认授权，而 `service_role` 也是 PUBLIC 的成员 —— 它同样从 PUBLIC 继承不到
+  EXECUTE 了。若 Supabase 没给那五个老函数（`merge_entitlement` /
+  `claim_device_entitlement` / `claim_link_code` / `redeem_code` / `bump_usage`）
+  留显式的 `service_role` 授权，**服务端调用会报 42501，权益系统全线失灵**
+  （`orders.sql` 那六个函数同理）。用 `supabase/security.sql` 末尾那段现成的
+  核对查询确认：期望形状是 `{owner=X/owner,service_role=X/owner}`。不在里面的，
+  显式补一次授权。**这条不验，不要上线。**
+- **三张微信收款码在 `public/pay/`**：`wechat-6.60.png` / `wechat-9.90.png` /
+  `wechat-69.00.png`（559×559 方图）。缺文件时弹窗显示「暂未就绪」，不会裂图。
+  **图片上的金额是物理的** —— 改价必须同时重做对应图片，否则码与价格对不上
+- 确认弹窗里三档价位各自显示出**正确的收款码**（6.60 别显示成 9.90）——
+  三张图肉眼极像，只有金额数字不同
+- **开微信收款语音提醒** —— 到账确认是整条链路唯一的人工环节，别让漏看发生
+- **`scripts/confirm-order.mjs` 能跑通**，且确认一单后浏览器能自动开通：
+  下单 → 付款 → `--id` 确认 → 页面几秒内解锁 → 再点「获取激活码」在另一台设备兑换
 - 联系方式在 `src/lib/contact.ts` 一处改，页脚与付款弹窗同源
 - 设 `NEXT_PUBLIC_SITE_URL` 为你的正式域名，否则 canonical 与 sitemap 指向 vercel.app
-- 自己走一遍：付款 → 拿到码 → 站内兑换 → 排盘成功
 
 ### 关于 Supabase 是不是必须的
 
@@ -482,13 +637,17 @@ node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --cou
 宁可不可用，也不敞着口子烧钱。
 
 如果将来想换掉 Supabase：数据访问集中在 `runtime.ts` 的 `admin()` 与三个 store 文件里，
-`usage` / `redeem_codes` / `pass_consumptions` 都是标准 SQL，换 Neon 或自建 Postgres
+`usage` / `redeem_codes` / `pass_consumptions` / `orders` 都是标准 SQL，换 Neon 或自建 Postgres
 基本只动那一处。但 `accounts.sql` 那套要重写（认证得自己来）。
 **自建服务器**（单进程）的话，进程内计数就够用了，Supabase 的必要性会大幅下降。
 
 ## 已知待办
 
-- **订单表与管理后台**：订单确认目前依赖人工发码
+- **管理后台**：发码与对账都靠命令行脚本（`gen-codes.mjs` / `confirm-order.mjs`），
+  够用，但每次都得上服务器敲
+- **聚合支付接入（需资质）**：拿到商户号与回调能力后，把 `src/lib/pay.ts` 的接缝
+  从"静态收款码 + 人工确认"换成 redirect —— 订单表、状态机、路由、权益签发
+  都不用动（那个联合类型就是为此留的）
 - **会员到期提醒**：现在只能靠用户自己看
 - **社交登录**：目前只有邮箱验证码
 
@@ -496,6 +655,11 @@ node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode bazi --cou
 
 - **第三方个人支付接入**（虎皮椒 / PayJS）：能自动回调，但要注册服务商、
   2–3% 手续费、钱先进第三方再提现。这层外部依赖不适合现阶段引入
+- **尾数对账**（用金额尾数区分同一时刻的多笔订单，如 ¥6.60 / 6.61 / 6.62…）：
+  **每个尾数都要一张单独的收款码** —— 3 个价位 × N 个尾数，手动生成的图片
+  数量很快失控。改用「用户可选提交交易单号」消歧：从账单里复制一串号比手输
+  金额轻松，还顺带留下纠纷凭证。真到了两笔款同一分钟到账那天再加不迟 ——
+  `orders.amount` 本来就是真实数字，加尾数不用改表
 - **管理后台网页**：一个只用于发码的网页要额外的密钥与暴露面，脚本够了
 - **邀请裂变**：原实现是本机计数器，自己点三次就给自己发会员 ——
   那是一个兑不了的承诺，比没有更伤用户。等有了服务端账号体系再重新设计

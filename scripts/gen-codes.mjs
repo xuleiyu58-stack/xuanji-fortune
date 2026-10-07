@@ -15,6 +15,22 @@
 import { createClient } from "@supabase/supabase-js";
 import { mintCode } from "../src/lib/server/codes.ts";
 
+/**
+ * 终止信号，带退出码。
+ *
+ * **不用 `process.exit()`**：本脚本会先发 HTTP 请求（写库），而 Windows + Node 24
+ * 上实测过 —— 先发过请求再 `process.exit()`，libuv 会在退出时撞上
+ * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`，退出码变成 127。
+ * 于是"参数错了"本该退 1 却报 127，脚本里 `&&` 串联的判断会全部误判。
+ * 改成设 exitCode、让事件循环自己收敛（Task 9 在 confirm-order.mjs 上踩过同一个坑）。
+ */
+class Stop extends Error {
+  constructor(code = 1) {
+    super("stop");
+    this.code = code;
+  }
+}
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 2) {
@@ -29,7 +45,7 @@ function requireEnv(name) {
   const v = process.env[name];
   if (!v) {
     console.error(`缺少环境变量 ${name}。请确认 .env.local 已配好 Supabase。`);
-    process.exit(1);
+    throw new Stop(1);
   }
   return v;
 }
@@ -41,17 +57,17 @@ async function main() {
 
   if (kind !== "member" && kind !== "single") {
     console.error("--kind 必须是 member 或 single");
-    process.exit(1);
+    throw new Stop(1);
   }
   const days = kind === "member" ? Number.parseInt(args.days ?? "30", 10) : 0;
   const mode = kind === "single" ? args.mode : null;
   if (kind === "single" && !mode) {
     console.error("--kind single 时必须给 --mode（bazi / tarot / love）");
-    process.exit(1);
+    throw new Stop(1);
   }
   if (!Number.isInteger(count) || count <= 0 || count > 500) {
     console.error("--count 必须是 1..500 的整数");
-    process.exit(1);
+    throw new Stop(1);
   }
 
   const db = createClient(
@@ -106,7 +122,7 @@ async function main() {
     console.error("\n写入失败：", lastError);
     console.error("若提示表不存在，先在 Supabase SQL Editor 执行 supabase/redeem.sql");
     console.error("若是网络问题，重跑本命令即可（已写入的码不会重复发）。");
-    process.exit(1);
+    throw new Stop(1);
   }
 
   const header = kind === "member" ? `会员 ${days} 天` : `单次 · ${mode}`;
@@ -115,4 +131,12 @@ async function main() {
   console.log("\n发放方式：用户付款后把其中一个发给对方，站内输入即解锁。一码只能用一次。\n");
 }
 
-main();
+main().catch((e) => {
+  if (e instanceof Stop) {
+    // 报错文案早就在各自的分支里打过了，这里只负责退出码
+    process.exitCode = e.code;
+    return;
+  }
+  console.error(`出错：${e instanceof Error ? e.message : String(e)}`);
+  process.exitCode = 1;
+});

@@ -72,7 +72,7 @@ for (const b of batches) {
 
 out += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 out += `补发新码：\n`;
-out += `  node --use-env-proxy --env-file=.env.local scripts/gen-codes.mjs \\\n`;
+out += `  node --import ./scripts/ts-loader.mjs --use-env-proxy --env-file=.env.local scripts/gen-codes.mjs \\\n`;
 out += `    --kind single --mode bazi --count 50 --batch <批次名>\n`;
 
 const file = `激活码清单-${new Date().toISOString().slice(0, 10)}.txt`;
