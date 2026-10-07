@@ -19,7 +19,7 @@
 --
 -- 为什么这很严重
 --
--- accounts / ledger / redeem / schema 里那七张表都开了 RLS 且没有任何 policy，
+-- accounts / ledger / redeem / schema 里那八张表都开了 RLS 且没有任何 policy，
 -- 所以"直接读表"这条路是堵死的 —— 但从 `/rest/v1/rpc/<函数名>` 进来的调用
 -- 根本不经过 RLS，而这些函数是 `security definer`（以属主身份运行，
 -- 属主能绕过 RLS）。绕过的正是那道防线：
@@ -52,13 +52,14 @@
 -- 走的是 JWT 里的 role 声明，不是这两个角色。即便是，它作为
 -- `service_role` 也能绕过 RLS，不受本文件影响。
 
+-- 角色写三个，`public` 才是关键那个（anon 与 authenticated 都是它的成员，
+-- 砍它一个就等于砍了所有角色）；另外两个一并写上是防将来有人单独给它们授过权。
+-- 只留一次 pg_roles 判断：原来分两次是因为两个角色要各判各的，现在两条语句
+-- 并成一条，判其中任一个存在就够了 —— 它们同属 Supabase 默认角色集，同生同灭。
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
-    revoke all on all functions in schema public from authenticated;
-  end if;
-  if exists (select 1 from pg_roles where rolname = 'anon') then
-    revoke all on all functions in schema public from anon;
+    revoke all on all functions in schema public from public, anon, authenticated;
   end if;
 end $$;
 
