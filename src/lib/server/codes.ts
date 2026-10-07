@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { admin, allowMemoryFallback, envValue } from "@/lib/server/runtime";
 
 /**
@@ -22,13 +23,28 @@ export interface RedeemOutcome {
 /** Crockford base32：去掉易混的 I L O U。32 整除 256，取模无偏。 */
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
+/** 激活码长度。16 位 Crockford base32 ≈ 80 bit 熵。 */
+const CODE_LENGTH = 16;
+
+/**
+ * 发码。**生成逻辑只此一处。**
+ *
+ * 此前它只存在于 scripts/gen-codes.mjs 里，而 ALPHABET 在本文件与那个脚本
+ * 各写了一遍。订单自动发码（/api/order/code）如果就地再写一遍，就是第三份 ——
+ * 三份里任何一份的字符集被改动，都会让"生成的码核销不了"这种错误只在线上出现。
+ */
+export function mintCode(): string {
+  const bytes = randomBytes(CODE_LENGTH);
+  return [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join("");
+}
+
 export function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/[\s-]/g, "");
 }
 
 export function isValidCodeFormat(code: string): boolean {
-  // 用 Array.from 而非 [...code]：tsconfig 未设 target（默认 ES5），字符串展开会触发 TS2802。
-  // 两者都按码点迭代，判定结果一致。
+  // Array.from 与 [...code] 都按码点迭代，判定结果一致 —— 保留前者只是历史选择。
+  // （早先说 tsconfig 未设 target、展开会触发 TS2802 已不成立：target 显式设了 ES2020。）
   return code.length === 16 && Array.from(code).every((ch) => ALPHABET.includes(ch));
 }
 

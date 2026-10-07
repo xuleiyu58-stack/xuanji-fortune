@@ -2,16 +2,18 @@
  * 批量生成激活码。
  *
  * 用法（在仓库根目录）：
- *   node --env-file=.env.local scripts/gen-codes.mjs --kind member --days 30 --count 20 --batch 2026-10
- *   node --env-file=.env.local scripts/gen-codes.mjs --kind single --mode tarot --count 50 --batch 2026-10
+ *   node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs \
+ *     --kind member --days 30 --count 20 --batch 2026-10
+ *   node --import ./scripts/ts-loader.mjs --env-file=.env.local scripts/gen-codes.mjs \
+ *     --kind single --mode tarot --count 50 --batch 2026-10
+ *
+ * --import 是必需的：本脚本复用 src/lib/server/codes.ts 的 mintCode()，
+ * 而那个模块内部以 `@/` 别名 import，只有 ts-loader 认得（裸 node 会 ERR_MODULE_NOT_FOUND）。
  *
  * 刻意不做管理后台：一个只用于发码的网页要额外的密钥与暴露面，脚本够了。
  */
-import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-
-const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const CODE_LENGTH = 16;
+import { mintCode } from "../src/lib/server/codes.ts";
 
 function parseArgs(argv) {
   const out = {};
@@ -21,12 +23,6 @@ function parseArgs(argv) {
     out[key.slice(2)] = argv[i + 1];
   }
   return out;
-}
-
-function makeCode() {
-  // 32 整除 256，随机字节取模 32 是无偏的
-  const bytes = randomBytes(CODE_LENGTH);
-  return [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join("");
 }
 
 function requireEnv(name) {
@@ -67,7 +63,7 @@ async function main() {
   const rows = [];
   const seen = new Set();
   while (rows.length < count) {
-    const code = makeCode();
+    const code = mintCode();
     if (seen.has(code)) continue; // 生日碰撞概率极低，但重复插入会整批失败，挡一下
     seen.add(code);
     rows.push({ code, kind, mode, days, batch: args.batch ?? null });
