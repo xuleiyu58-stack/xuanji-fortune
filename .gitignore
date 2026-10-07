@@ -26,6 +26,16 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# 生产环境变量。在服务器上由 deploy/.env.production.example 复制而来，
+# 装着 DEEPSEEK_API_KEY 与 SUPABASE_SERVICE_ROLE_KEY（后者泄露等于数据库裸奔）。
+# ⚠️ 上面那条 `.env*.local` 挡不住它 —— 名字里没有 .local。
+# 保留 .example 模板，只挡真实文件。
+.env.production
+.env.production.*
+!.env.production.example
+deploy/.env.production
+!.env.production.example
+
 # vercel
 .vercel
 

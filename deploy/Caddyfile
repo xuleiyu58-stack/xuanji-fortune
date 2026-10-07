@@ -1,0 +1,13 @@
+# Caddy 配置。只有三行有效内容 —— 其余都是注释。
+#
+# {$DOMAIN} 由 docker-compose 从 .env.production 传进来。
+# 域名一旦出现在 site 地址里，Caddy 就会自动去 Let's Encrypt 申请证书、
+# 自动续期、自动把 http 跳转到 https。不需要写任何 tls 指令。
+#
+# 前提：域名必须已经解析到这台服务器的公网 IP。没解析就申请不到证书，
+# Caddy 会一直重试并打日志（docker compose logs caddy 能看到）。
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

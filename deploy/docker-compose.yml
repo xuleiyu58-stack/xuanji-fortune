@@ -1,0 +1,55 @@
+# 玄机 —— 单机部署（香港轻量服务器）
+#
+# 两个容器：app（Next.js）+ caddy（反向代理与 HTTPS）。
+#
+# 为什么用 Caddy 而不是 Nginx + certbot：Caddy 自己申请并自动续期 Let's Encrypt 证书，
+# 不需要 cron、不需要 certbot renew、不需要记得重启。代价是配置文件语法要另学一遍，
+# 但这里只有三行。
+#
+# 用法：在 deploy/ 目录下
+#   cp .env.production.example .env.production   # 填好域名与密钥
+#   docker compose up -d --build
+#
+# DOMAIN 从 .env.production 读，所以这个文件不含任何需要手改的地方。
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        # 构建期就要定下，理由见 Dockerfile 顶部
+        NEXT_PUBLIC_SITE_URL: https://${DOMAIN}
+    env_file:
+      - .env.production
+    environment:
+      # env_file 里的 NEXT_PUBLIC_SITE_URL 不写也行，这里统一由 DOMAIN 推出，
+      # 免得域名改了两处不一致 —— 不一致的表现是 sitemap 指向旧域名
+      NEXT_PUBLIC_SITE_URL: https://${DOMAIN}
+      NODE_ENV: production
+    restart: unless-stopped
+    # 不映射到宿主机端口：只有 caddy 需要访问它，走内部网络即可。
+    # 这样 3000 端口不对公网暴露，少一个面。
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 证书与 Caddy 的状态必须持久化，否则每次重建容器都会重新申请证书，
+      # 撞上 Let's Encrypt 的签发频率限制（同一域名每周 50 张）
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

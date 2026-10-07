@@ -1,0 +1,29 @@
+# 构建上下文里不该出现的东西。
+#
+# ⚠️ .env.local 这一条是安全项，不是洁癖：它装着 DEEPSEEK_API_KEY 与
+# SUPABASE_SERVICE_ROLE_KEY（后者泄露等于数据库裸奔）。Docker 默认会把上下文里
+# 的文件 COPY 进镜像层，而镜像层是可以被导出查看的 —— 加进镜像等于把密钥
+# 一起发出去。漏掉这一行的后果不会立刻显形，所以它排在最前面。
+
+.env
+.env.local
+.env*.local
+
+node_modules
+.next
+.git
+.gitignore
+
+# 开发与流程用的目录，跟运行时无关
+.superpowers
+.tmp
+docs
+tests
+scripts
+
+# 已构建过的产物（镜像里重新构建）
+*.tsbuildinfo
+
+# 用户自己的杂项
+激活码清单-*.txt
+README.md
