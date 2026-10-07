@@ -2,6 +2,30 @@
 
 import { useEffect, useRef } from "react";
 
+/** 弹层内可聚焦元素的样式。只此一份 —— 抄字符串的调用方迟早会漏掉下面那层
+ *  可见性过滤，所以统一走 focusableIn / focusFirstIn，不要各自 querySelector。 */
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * 容器内**当前可聚焦**的元素。
+ *
+ * 过滤掉 `offsetParent === null` 的（display:none / 折叠区里的）元素：它们
+ * focus() 无效，把它们当成首尾会让 Tab 环绕落空。当前已有焦点的那个例外，
+ * 否则焦点一旦短暂落在隐藏元素上就再也出不来。
+ */
+function focusableIn(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.offsetParent !== null || el === document.activeElement
+  );
+}
+
+/** 把焦点移进容器内第一个可聚焦元素。切换步骤后把焦点收回弹窗时用。 */
+export function focusFirstIn(root: HTMLElement | null): void {
+  focusableIn(root)[0]?.focus();
+}
+
 /**
  * 弹层/抽屉的键盘与焦点行为。
  *
@@ -23,15 +47,7 @@ export function useDialog(open: boolean, onClose: () => void) {
 
     restoreTo.current = document.activeElement as HTMLElement | null;
 
-    const focusables = (): HTMLElement[] => {
-      const root = ref.current;
-      if (!root) return [];
-      return Array.from(
-        root.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
-    };
+    const focusables = (): HTMLElement[] => focusableIn(ref.current);
 
     // 打开后把焦点移进来，否则 Tab 的起点还在背后的页面上
     const first = focusables()[0];

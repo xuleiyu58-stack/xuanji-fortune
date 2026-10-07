@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Seal } from "./Glyph";
-import { useDialog } from "./useDialog";
+import { useDialog, focusFirstIn } from "./useDialog";
 import { CONTACT_EMAIL } from "@/lib/contact";
 import { PLANS, type PlanId } from "@/lib/pricing";
 import { refreshEntitlement } from "@/lib/entitlements";
@@ -35,10 +35,6 @@ interface Props {
   /** 已解锁时打开这个弹窗，直接展示状态而不是再要一次码 */
   alreadyUnlocked?: boolean;
 }
-
-/** 弹窗内的可聚焦元素。与 useDialog 里那份同一形状。 */
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * 付费与解锁。
@@ -209,10 +205,14 @@ export default function PaymentModal({
    * 的页面上。所以每次换步都重新聚焦弹窗内的第一个可聚焦元素。
    *
    * 激活码页除外：那一页要的是输入框，由下面那条 effect 负责。
+   *
+   * 用 useDialog 导出的 focusFirstIn，而不是自己 querySelector 一遍选择器：
+   * 那份选择器还带一层"必须可见"的过滤，只抄字符串会漏掉过滤，把焦点设到
+   * 一个 display:none 的元素上 —— focus() 无效，焦点反而留在坏状态里。
    */
   useEffect(() => {
     if (!open || step === "code") return;
-    dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    focusFirstIn(dialogRef.current);
   }, [open, step]);
 
   useEffect(() => {
@@ -226,6 +226,21 @@ export default function PaymentModal({
   const qrLabel = activeChannel?.label ?? "收款";
   // 只有一个收款渠道时不摆任何切换 UI，也不摆渠道选择按钮：他没有别的渠道可付
   const claimProvider = provider ?? (channels.length === 1 ? channels[0]?.id ?? null : null);
+
+  /**
+   * 进激活码页。
+   *
+   * 兑换走 /api/pass，跟本单有没有建起来毫无关系 —— 所以这个入口在**建单
+   * 失败的那一屏也必须有**。手里已经有码的人（正是"手机付款、电脑使用"的
+   * 跨设备场景）打开弹窗时若赶上 /api/order 挂了，只有这一条路能走进去；
+   * 旧界面的「我已付款，输入激活码」就是不依赖网络的，这次改造不能把它弄丢。
+   */
+  const enterCodeStep = (from: "pay" | "done") => {
+    codeFromRef.current = from;
+    setCode("");
+    setError(null);
+    setStep("code");
+  };
 
   const handleRedeem = async () => {
     setError(null);
@@ -571,12 +586,7 @@ export default function PaymentModal({
                     )}
 
                     <button
-                      onClick={() => {
-                        codeFromRef.current = "pay";
-                        setCode("");
-                        setError(null);
-                        setStep("code");
-                      }}
+                      onClick={() => enterCodeStep("pay")}
                       className="text-paper-100/45 hover:text-gold-300 text-[11px] mt-4 transition-colors"
                     >
                       已有激活码？点此输入
@@ -605,7 +615,25 @@ export default function PaymentModal({
                         重试
                       </button>
                     </div>
-                    <p className="text-paper-100/45 text-[11px] mt-4">
+
+                    {/*
+                      建单失败也必须摆这个入口。
+
+                      兑换激活码走的是 /api/pass，与 /api/order 没有半点关系，
+                      所以这条路的可用性不该被"下单失败"连坐。而手里已经有码的
+                      人恰恰是最常见的一类：他在**手机上付款**、在**电脑上使用**，
+                      电脑这一侧从头到尾不需要建单。只在成功分支摆这个入口，
+                      等于网络一挂就把这类用户彻底挡在门外，而旧界面的
+                      「我已付款，输入激活码」本来是不依赖网络的。
+                    */}
+                    <button
+                      onClick={() => enterCodeStep("pay")}
+                      className="text-paper-100/45 hover:text-gold-300 text-[11px] mt-4 transition-colors"
+                    >
+                      已有激活码？点此输入
+                    </button>
+
+                    <p className="text-paper-100/45 text-[11px] mt-3">
                       付款遇到问题，请联系 {CONTACT_EMAIL}
                     </p>
                   </>
