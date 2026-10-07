@@ -309,3 +309,27 @@ test("code 路由：写码失败要撤回 code_issued_at，否则用户再也拿
   assert.match(src, /code_issued_at:\s*null/, "写码失败必须撤回发码标记以便重试");
   assert.match(src, /23505/, "只有主键冲突（撞码）才重试；其它错误一律撤回并回 503");
 });
+
+test("code 路由：insert 抛异常也要接住并撤回 —— 别指望库只回 { error } 对象", () => {
+  // 当前版本的 postgrest-js 会把连接层失败也翻成 `{ error: { code: '' } }`，所以这一支
+  // 在今天是**防御性**的。留着它是因为"撤标记"不能挂在第三方库的错误封装方式上：
+  // 少了它，异常直接落到最外层 catch → 503，标记留在库里，用户从此每次都拿到
+  // "已发放过"而手里没有码（付过钱的人被挡在门外）。
+  const src = routeSource(CODE_ROUTE);
+  assert.match(src, /catch\s*\(/, "必须自己接住 insert 的异常");
+  const iCatch = src.indexOf("} catch (err) {");
+  const iUndo = src.indexOf("await undoMark()");
+  assert.ok(iCatch >= 0 && iUndo >= 0, "抛异常那一支也要撤回标记");
+  assert.ok(iCatch < iUndo, "撤回必须发生在 catch 之内（否则就是又一条不撤的路）");
+});
+
+test("code 路由：「已发放过」那一支按 batch 反查 —— 把已发出的码还给用户", () => {
+  // 标记在、码没发出（写码失败 + 撤回也失败），和标记在、码已发出，两种残局在
+  // `mark_code_issued` 返回 null 时长得一模一样。判据只有一个：redeem_codes 里
+  // 有没有 batch = order.id 的那一行。查到就还码，查不到才报错 —— 否则付过钱的
+  // 用户被永久挡在门外，只能找客服。
+  const src = routeSource(CODE_ROUTE);
+  assert.match(src, /eq\("batch",/, "必须按 batch = order.id 反查已发出的码");
+  assert.match(src, /batch:\s*paidOrder\.id/, "写码时 batch 就是 order.id —— 反查靠它对上");
+  assert.match(src, /success:\s*true,\s*code:\s*alreadyIssued/, "查到就把那张码原样返回（幂等恢复）");
+});

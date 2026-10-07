@@ -145,11 +145,20 @@ as $$
   returning *;
 $$;
 
-revoke all on function public.expire_stale_orders() from anon, authenticated;
-revoke all on function public.confirm_order(uuid, text, text) from anon, authenticated;
-revoke all on function public.create_order(text, numeric, uuid, int) from anon, authenticated;
-revoke all on function public.claim_order_delivery(uuid, uuid, jsonb) from anon, authenticated;
-revoke all on function public.mark_code_issued(uuid, uuid) from anon, authenticated;
-revoke all on function public.unconfirm_order(uuid) from anon, authenticated;
+-- 角色写三个：`public` 才是关键那个。Postgres 建函数时会自动
+-- `grant execute on function ... to public`，而 `public` 是一个角色、且是所有角色的
+-- 祖先 —— `anon` 与 `authenticated` 都属于它。只砍后两个，函数照样从 public
+-- 继承着 EXECUTE，在 PostgREST 里匿名可调（详见 supabase/security.sql 开头）。
+-- 砍了 public，本文件就跑在前、security.sql 还没跑，这六个函数也是锁着的。
+revoke all on function public.expire_stale_orders() from public, anon, authenticated;
+revoke all on function public.confirm_order(uuid, text, text) from public, anon, authenticated;
+revoke all on function public.create_order(text, numeric, uuid, int) from public, anon, authenticated;
+revoke all on function public.claim_order_delivery(uuid, uuid, jsonb) from public, anon, authenticated;
+revoke all on function public.mark_code_issued(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.unconfirm_order(uuid) from public, anon, authenticated;
 
--- ⚠️ 上面这一组不够 —— 函数还从 `public` 角色继承着 EXECUTE。收口在 supabase/security.sql。
+-- supabase/security.sql 对上面这六个函数**再**收一次口（同一条 revoke，带 to_regprocedure
+-- 守卫）。那不是前提而是纵深：它还会用 `revoke ... on all functions in schema public`
+-- 把**以后新增**的函数一并覆盖，而那种写法只作用于它执行那一刻已存在的函数 ——
+-- 所以往 public 里加函数时，仍要照本文件的样式顺手 revoke 一次。
+-- 推荐顺序：先本文件，再 security.sql。

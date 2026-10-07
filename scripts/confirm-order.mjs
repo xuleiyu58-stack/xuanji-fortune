@@ -134,8 +134,16 @@ const money = (n) => `¥${Number(n).toFixed(2)}`;
 
 const shortId = (id) => id.slice(0, 8);
 
-/** 本地时间 HH:MM。站长看的是墙上的钟，不是 UTC。 */
+/**
+ * 本地时间 HH:MM。站长看的是墙上的钟，不是 UTC。
+ *
+ * 空值返回占位符，**不要靠 `new Date(null)`**：那会渲染成 1970/本地 08:00 这种
+ * 看着像真时间的假值。--undo 那条罕见路径要按 deliveredAt / codeIssuedAt 判断
+ * "凭什么拒绝撤销"，一个假时间会让它自信地打印一句假话（声称一张从未发出的码已发出）。
+ * 在这里挡一次，比在每一处调用点判空省事，也不会漏。
+ */
 function clock(iso) {
+  if (!iso) return "—";
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
@@ -306,7 +314,12 @@ async function undo(target) {
     }
     const why = current.deliveredAt
       ? `它已在 ${clock(current.deliveredAt)} 交付给用户，撤销会让用户正在用的权益凭空消失。`
-      : `它已在 ${clock(current.codeIssuedAt)} 发出激活码，撤销会被那张已发出去的码打脸。`;
+      : current.codeIssuedAt
+        ? `它已在 ${clock(current.codeIssuedAt)} 发出激活码，撤销会被那张已发出去的码打脸。`
+        : // 既没交付时间也没发码时间，却拒绝了撤销 —— 只能是两次读之间状态又被改了回去。
+          // 这里绝不能顺着上面的模板说"已在某时发出激活码"：那两个时间戳都是空的，
+          // 那句话是凭空捏造的（clock 的空值占位也会让文案读起来像真有一个时间）。
+          `它的状态在读列表之后又变过一次，这一次撤销没落到行上。再跑一次 --undo 看看。`;
     console.error(
       `撤销被拒绝：\n  ${shortId(current.id)}  ${money(current.amount)}  ${planName(current.plan)}\n${why}`
     );

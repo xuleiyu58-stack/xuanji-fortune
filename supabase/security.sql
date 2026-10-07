@@ -19,7 +19,7 @@
 --
 -- 为什么这很严重
 --
--- accounts / ledger / redeem / schema 里那八张表都开了 RLS 且没有任何 policy，
+-- accounts / ledger / redeem / schema 里那七张表都开了 RLS 且没有任何 policy，
 -- 所以"直接读表"这条路是堵死的 —— 但从 `/rest/v1/rpc/<函数名>` 进来的调用
 -- 根本不经过 RLS，而这些函数是 `security definer`（以属主身份运行，
 -- 属主能绕过 RLS）。绕过的正是那道防线：
@@ -86,10 +86,12 @@ end $$;
 
 -- ── 订单函数的收口（supabase/orders.sql）────────────────────
 --
--- 上面那段 `on all functions in schema` 只覆盖它**执行那一刻已存在**的函数 ——
--- 这是那个写法唯一的代价，也是最容易忘的一步。orders.sql 后加进来的六个函数
--- 必须在这里点名再收一次，否则它们会带着 Postgres 建函数时默认的那句
--- `grant execute on function ... to public` 上线，在 PostgREST 里匿名可调：
+-- 下面六个函数在这里点名再收一次口。**这不是唯一的一道锁**：orders.sql 结尾那六条
+-- `revoke ... from public, anon, authenticated` 也砍了 public（那六个函数在它自己
+-- 文件里建的，它砍得着）。两边同时写是纵深：本文件用的是点名 + to_regprocedure 守卫，
+-- 万一 orders.sql 那一组被人改回只砍 anon/authenticated，这一层还兜得住。
+--
+-- 锁定之前，这六个函数在 PostgREST 里是匿名可调的，各意味着什么：
 --
 --   * create_order(text…)        → 凭空给自己造一张订单
 --   * confirm_order(…)           → 把任意订单标成已付款。这是白嫖入口：
@@ -106,8 +108,20 @@ end $$;
 -- 三个一起写不冲突。
 --
 -- 为什么包一层 do / to_regprocedure：`revoke` 一个**还不存在的函数**会直接报错，
--- 而 orders.sql 可能还没跑 —— 本文件承诺过"可以反复跑"（见开头），
--- 那就不该挑执行顺序。多了这道判断，先跑本文件也安全。
+-- 而 orders.sql 可能还没跑；本文件承诺过"可以反复跑"（见开头），加了这道判断，
+-- 少跑一个 orders.sql 也不会让本文件在半路上炸掉。
+--
+-- 但要看清它做了什么、**没做什么**：
+--   · 它只保证**可反复执行**（幂等），不保证**顺序无关**。先跑本文件时那六个函数
+--     还不存在，这些 `revoke` 会整段跳过 —— 本文件对这些函数什么都没做。
+--   · 顺序之所以现在不致命，靠的是 orders.sql 自己那六条
+--     `revoke ... from public, anon, authenticated`，不是靠这道判断。
+--     若哪天那六条被改回只砍 anon/authenticated，先跑本文件（再跑 orders.sql）
+--     就会留下匿名可调的 confirm_order / claim_order_delivery —— 正是本文件开头
+--     警告的那个洞。
+--
+-- 所以推荐顺序依旧是 **先 orders.sql，再本文件**：本文件在这里再收一次口，
+-- 是纵深防御，不是"先跑哪个都行"的许可。
 do $$
 begin
   if to_regprocedure('public.create_order(text, numeric, uuid, int)') is not null then

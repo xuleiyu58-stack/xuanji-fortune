@@ -43,8 +43,14 @@ const db = {
 const sessions = new Map();    // access_token -> { id, email }
 
 /**
- * redeem_codes 写入的故障注入模式：none | conflict | error。
+ * redeem_codes 写入的故障注入模式：none | conflict | error | abort。
  * 仅测试用，由 /__test__/redeem-insert-mode 切换、/__test__/reset 复位。
+ *
+ *   · conflict —— 回 23505（撞码）
+ *   · error    —— 回 500 + { code: 'XX000' }（数据库报错）
+ *   · abort    —— 掐断连接：请求根本没到库。**注意它打的不是 try/catch 那条分支** ——
+ *                 postgrest-js 会把连接层失败也翻成 `{ error: { code: '' } }`，
+ *                 于是走进"非撞码就撤标记"那一支。两条路都必须撤回标记，这里都可覆盖。
  */
 let redeemInsertMode = "none";
 
@@ -519,6 +525,10 @@ const server = createServer(async (req, res) => {
         // 故障注入（仅测试用，见 /__test__/redeem-insert-mode）。发码路由的两条
         // 非正常分支（撞码重试 / 写码失败后撤回发码标记）没有它就没法被真正验证，
         // 只能靠源码字符串断言 —— 字符串断言挡不住"实现改了但名字还在"。
+        if (redeemInsertMode === "abort") {
+          req.socket.destroy();
+          return;
+        }
         if (redeemInsertMode === "error") {
           return json(res, 500, { code: "XX000", message: "injected insert failure" });
         }

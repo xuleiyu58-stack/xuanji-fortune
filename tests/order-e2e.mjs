@@ -211,11 +211,19 @@ check(
   `code=${code}`
 );
 
-// B9. 行为 4 后半：第二次取 → 400，且库里没有第二张码
+// B9. 行为 4 后半：第二次取 → **原样返回同一张码**（幂等恢复，不是 400）。
+// 这条以前断的是"第二次 → 400"。那样一来，只要发码标记卡住而码真发出去了
+// （写码失败 + 撤回也失败），用户就永远拿不到那张已经在库里的码 —— 钱付了、门关着。
+// 现在按 batch 反查，查到就还给他；同一张码开不了第二台设备，所以不违背"一次付款一次发码"。
 r = await post("/api/order/code", { orderId: orderA }, `xj_dev=${devA}`);
-check("B9. 第二次取码 → 400（只能取一次）", r.status === 400, `status=${r.status}`);
+const againBody = await r.json();
+check(
+  "B9. 第二次取码 → 200，原样返回同一张码（幂等恢复）",
+  r.status === 200 && againBody.code === code,
+  `status=${r.status} code=${againBody.code}`
+);
 const codes = await mockCodes(orderA);
-check("B9. 库里只有一张码 —— 重复点没有变出第二个", codes.length === 1, `rows=${codes.length}`);
+check("B9. 库里只有一张码 —— 幂等恢复没有变出第二个", codes.length === 1, `rows=${codes.length}`);
 check("B9. 码的 batch 指向本单，重复取不会新铸", codes[0]?.code === code);
 check(
   "B9. kind/mode/days 与该单套餐（bazi 单次）一致",
@@ -267,6 +275,40 @@ check("B12. 发码标记被撤回（code_issued_at 回到 null）", rowA?.code_i
 await setMode("none");
 r = await post("/api/order/code", { orderId: c1.id }, `xj_dev=${c1.dev}`);
 check("B12. 撤回后重试能拿到码 —— 用户没有被打死", r.status === 200 && (await r.json()).code?.length === 16, `status=${r.status}`);
+
+// B12b/B12c. 发码失败的两条残局。B12b 是"请求根本没到库"（连接被掐断，postgrest-js
+// 翻成 `{ error: { code: '' } }` → 非撞码分支 → 撤标记）；B12c 是"标记撤不掉，
+// 于是卡在库里"。前者要能重试，后者要能靠反查把已经发出去的码还给用户。
+line("B12b. 连接被掐断（请求没到库）→ 撤标记 + 503，重试能拿到码");
+const c3 = await paidOrder();
+await setMode("abort");
+r = await post("/api/order/code", { orderId: c3.id }, `xj_dev=${c3.dev}`);
+check("B12b. 连接失败 → 503（不是崩到 500）", r.status === 503, `status=${r.status}`);
+rowA = (await mockOrders(c3.id))[0];
+check("B12b. 连接失败也要撤回发码标记", rowA?.code_issued_at === null, `code_issued_at=${rowA?.code_issued_at}`);
+await setMode("none");
+r = await post("/api/order/code", { orderId: c3.id }, `xj_dev=${c3.dev}`);
+check("B12b. 重试能拿到码 —— 用户没有被打死", r.status === 200 && (await r.json()).code?.length === 16, `status=${r.status}`);
+
+line("B12c. 标记卡死但码没发出去 → 仍然拒绝，且文案不谎称『已发放过』");
+// 另一面的边界：反查只在**码真的发出去过**时才兜底。库里标记在、却查不到这一单的码，
+// 说明码确实没写成 —— 这时必须拒绝，但**不能**说"已发放过，请查看之前的记录"：
+// 他手里没有那条记录。文案要说异常 + 找客服。
+const c4 = await paidOrder();
+await setMode("conflict");
+r = await post("/api/order/code", { orderId: c4.id }, `xj_dev=${c4.dev}`);
+check("B12c. 撞码耗尽 → 503，标记留在库里（B13 同款状态）", r.status === 503, `status=${r.status}`);
+await setMode("none");
+rowA = (await mockOrders(c4.id))[0];
+check("B12c. 前提成立：标记在、码不在", rowA?.code_issued_at !== null && (await mockCodes(c4.id)).length === 0);
+r = await post("/api/order/code", { orderId: c4.id }, `xj_dev=${c4.dev}`);
+const stuckBody = await r.json();
+check("B12c. 反查不到码 → 400（没有把不存在的码编出来）", r.status === 400, `status=${r.status}`);
+check(
+  "B12c. 文案不谎称已发放过",
+  typeof stuckBody.error === "string" && !/已发放过/.test(stuckBody.error),
+  `error=${stuckBody.error}`
+);
 
 line("B13. 撞码 → 重试；重试 5 次仍撞则 503（标记留着，属于几乎不可达的边角）");
 const c2 = await paidOrder();

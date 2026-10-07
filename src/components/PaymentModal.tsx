@@ -17,6 +17,24 @@ interface Order {
   /** 金额由服务端从 PLANS 取出后回传 —— **前端一个字都不算**，见 /api/order。 */
   amount: number;
   instruction: QrInstruction;
+  /**
+   * 本单的付款时限（ISO 串，服务端下发的 30 分钟）。
+   *
+   * 必须留着，不能像早先那样丢掉：库里的过期清理（expire_stale_orders）**只在建单时**
+   * 跑一次，所以一张已过期的单在库里可能一直是 `pending` —— 服务端永远不会主动报
+   * `expired`。判定"这单超时了"的可靠依据只有这个时间戳，见下面的轮询。
+   */
+  expiresAt: string;
+  /**
+   * 建单那一刻，本地钟是否还在 `expiresAt` 之前。
+   *
+   * 本地钟是**唯一**能发现"单已超时但库里还是 pending"的依据（清理只在建单时跑），
+   * 但它有一个前提：这台机器的钟不能比服务端快出量级。若建单时就发现本地钟已越过
+   * 服务端刚下发的截止时刻，说明钟快得离谱 —— 那时必须弃用它，否则每次打开弹窗都
+   * 会立刻报"已超时"、收款码根本露不出来，这台机器的用户一分钱都付不出去。
+   * 少数派但代价极大，所以这里留一个开关，只信服务端的 `expired`。
+   */
+  clockUsable: boolean;
 }
 
 interface Props {
@@ -66,6 +84,14 @@ export default function PaymentModal({
   const [claimNotice, setClaimNotice] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [fetchCodeError, setFetchCodeError] = useState<string | null>(null);
+  /*
+   * 订单走到终止态之后的提示（超时 / 订单已失效）。
+   *
+   * 非 null 就代表这一单**再也开不出东西了**，轮询随即停表 —— 原先只有
+   * 「status === 'paid'」一条分支，expired 与永久性 404 都落进"静默继续每 4 秒
+   * 重试一次"，一直重到用户关掉弹窗：用户付了钱却什么都没看到，只会以为页面卡住了。
+   */
+  const [orderNotice, setOrderNotice] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   // 收款码是站长的外部资源，缺失时给出可读的占位，而不是一个碎图标。
   // 按渠道记：渠道集合是可变的，一个渠道裂图不该把别的渠道也一起抹掉。
@@ -112,6 +138,7 @@ export default function PaymentModal({
     setClaimNotice(null);
     setClaimError(null);
     setFetchCodeError(null);
+    setOrderNotice(null);
     setQrFailed({});
     setCode("");
     setError(null);
@@ -138,10 +165,15 @@ export default function PaymentModal({
           setStep("pay");
           return;
         }
+        const expiresAt = typeof data.expiresAt === "string" ? data.expiresAt : "";
+        const deadlineMs = Date.parse(expiresAt);
         setOrder({
           orderId: data.orderId,
           amount: data.amount,
           instruction: data.instruction,
+          expiresAt,
+          // 刚下发的单，本地钟若已经越过它的截止时刻 → 这台机器的钟不可信
+          clockUsable: Number.isFinite(deadlineMs) && deadlineMs > Date.now(),
         });
         setStep("pay");
       } catch {
@@ -159,22 +191,61 @@ export default function PaymentModal({
   /*
    * 轮询到账。
    *
-   * 只在弹窗开着、已建单、且还没到期(done)时跑。到账即停 —— 权益由服务端
+   * 只在弹窗开着、已建单、且还没到终止态时跑。到账即停 —— 权益由服务端
    * 在那次响应里签发 cookie，这里只负责把界面翻到"已解锁"并刷新一次前端缓存。
    *
    * 用户切到激活码页时不抢走他：那种情况下订单早已到账（否则取不到码），
    * 再翻页只会把他正在复制的码盖掉。
+   *
+   * **终止态一律停表**，不再无声重试（spec §4.4、§10）。原先只有「paid」一条出口，
+   * 另两种结局都被吞掉了：
+   *
+   *   · `expired` —— 单已超时。服务端**不会**主动报它（expire_stale_orders 只在
+   *     建单时跑），所以主要靠下面那条 `expiresAt` 判据；两条路都归到同一句提示。
+   *   · 404 —— 订单不存在或不属于本设备（spec §10 的表格）。它不是瞬时故障，
+   *     重试一万次也是同样的 404，只会让用户对着不动的页面干等。
+   *
+   * 5xx / 网络抖动**仍然静默重试**：那才是"等一会儿可能就好了"的一类。
    */
   useEffect(() => {
-    if (!open || !order || step === "done") return;
+    if (!open || !order || step === "done" || orderNotice) return;
     let stopped = false;
+
+    /**
+     * 已过付款时限。
+     *
+     * expiresAt 缺失、或本地钟已被判定不可信（见 Order.clockUsable）时一律返回 false ——
+     * 宁可多等一会儿，也不能把一个正在付款的页面报成"已超时"。
+     */
+    const pastDeadline = () => {
+      if (!order.clockUsable) return false;
+      const t = Date.parse(order.expiresAt);
+      return Number.isFinite(t) && Date.now() >= t;
+    };
+
+    const stopWithNotice = (text: string) => {
+      stopped = true;
+      clearInterval(timer);
+      setOrderNotice(text);
+    };
 
     const timer = setInterval(async () => {
       if (stopped) return;
+
+      // 先看服务端的到账状态，再判时限：站长确认可以"复活"过期单（用户超时后才付款
+      // 是真实坏情况），若反过来先按时限判死，一笔真付了钱的单会被我们报成"已超时"。
+      let res: Response | null = null;
+      let data: { success?: boolean; status?: string } | null = null;
       try {
-        const res = await fetch(`/api/order/status?id=${encodeURIComponent(order.orderId)}`);
-        const data = await res.json().catch(() => null);
-        if (stopped || !res.ok || !data?.success) return;
+        res = await fetch(`/api/order/status?id=${encodeURIComponent(order.orderId)}`);
+        data = await res.json().catch(() => null);
+      } catch {
+        // 网络抖动：静默重试，弹错误只会打扰正在付款的人
+        return;
+      }
+      if (stopped) return;
+
+      if (res.ok && data?.success) {
         if (data.status === "paid") {
           stopped = true;
           clearInterval(timer);
@@ -184,17 +255,33 @@ export default function PaymentModal({
           setFetchCodeError(null);
           if (step === "pay") setStep("done");
           await refreshEntitlement();
+          return;
         }
-      } catch {
-        // 轮询失败静默重试 —— 弹错误只会打扰正在付款的人
+        // 服务端明确说这单过期了（expired）—— 与本地时钟的结论一致，同一条出口
+        if (data.status === "expired") {
+          stopWithNotice("订单已超时，重新下单（金额不变）");
+          return;
+        }
+        // 其余（pending）：还没到账。把本地时限当兜底判据 —— 库里那张单可能
+        // 一直是 pending（清理只在建单时跑），不靠这个就永远发现不了它超时了。
+        if (pastDeadline()) {
+          stopWithNotice("订单已超时，重新下单（金额不变）");
+        }
+        return;
       }
+
+      // 404：订单不存在、或不属于本设备。终局，不再重试。
+      if (res.status === 404) {
+        stopWithNotice("该订单已失效，请重新下单");
+      }
+      // 其余状态码（503/500）按可恢复处理，下一轮再试。
     }, 4000);
 
     return () => {
       stopped = true;
       clearInterval(timer);
     };
-  }, [open, order, step]);
+  }, [open, order, step, orderNotice]);
 
   /*
    * 换步之后把焦点收回弹窗。
@@ -374,7 +461,46 @@ export default function PaymentModal({
                   {title}
                 </h3>
 
-                {order ? (
+                {/*
+                  终止态（超时 / 订单已失效）不摆收款码。
+
+                  这一屏最容易出的错是"提示让用户重新下单，下面却还挂着一张能扫的码" ——
+                  用户会照着旧码再付一次，或者以为页面上标的就是要付的钱。所以整块
+                  付款说明连同收款码一起收起来，只留一句话 + 一个金色主操作（重新下单），
+                  以及那条不依赖本单死活的「已有激活码」入口。
+                */}
+                {order && orderNotice ? (
+                  <>
+                    <p role="alert" className="text-vermillion-400 text-sm mb-6 leading-relaxed">
+                      {orderNotice}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleClose}
+                        className="text-paper-100/45 hover:text-paper-100 text-xs transition-colors px-1 py-2 shrink-0"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => setAttempt((n) => n + 1)}
+                        className="btn-primary flex-1 !py-2 !text-sm"
+                      >
+                        重新下单
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => enterCodeStep("pay")}
+                      className="text-paper-100/45 hover:text-gold-300 text-[11px] mt-4 transition-colors"
+                    >
+                      已有激活码？点此输入
+                    </button>
+
+                    <p className="text-paper-100/45 text-[11px] mt-3">
+                      付款遇到问题，请联系 {CONTACT_EMAIL}
+                    </p>
+                  </>
+                ) : order ? (
                   <>
                     <div className="price-tag justify-center">
                       <span className="symbol">¥</span>
