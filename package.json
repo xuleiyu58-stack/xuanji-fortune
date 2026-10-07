@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test"
+    "test": "node --test --import ./scripts/ts-loader.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
