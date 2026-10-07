@@ -1206,7 +1206,9 @@ git commit -m "订单数据层：状态转换全部交给数据库函数，内�
 **Files:**
 - Create: `src/app/api/order/route.ts`
 - Create: `src/app/api/order/status/route.ts`
-- Test: `tests/order-contract.test.mts`（新建）
+- Create: `src/lib/order-flow.ts`（纯判定逻辑，零 `next/*` 依赖）
+- Test: `tests/order-flow.test.mts`（新建）
+- Modify: `tests/no-fake-unlock.test.mts`（安全守卫，必须刻意更新 —— 见 Step 5）
 
 **Interfaces:**
 - Consumes: Task 1 `PLANS`/`isPlanId`/`ORDER_TTL_MINUTES`/`ORDER_IP_DAILY_LIMIT`；Task 4 `payInstructionFor`；Task 5 `createOrder`/`getOrder`/`claimOrderDelivery`；`withDeviceCookie`/`DEVICE_COOKIE`（`quota-guard.ts`）；`hashIp`/`readCount`/`bumpCount`（`usage-store.ts`）；`readEntitlement`/`withPassCookie`/`nowSec`（`pass-cookie.ts`）；`grantMember`/`grantPass`/`EMPTY_ENTITLEMENT`/`toSummary`（`entitlement.ts`）；`passSecret`（`runtime.ts`）；`putDeviceEntitlement`（`account-store.ts`）
@@ -1214,21 +1216,74 @@ git commit -m "订单数据层：状态转换全部交给数据库函数，内�
   - `POST /api/order` → `{ success, orderId, amount, instruction, expiresAt }` 或 `{ success: false, error }`
   - `GET /api/order/status?id=` → `{ success, status, entitlement? }`
 
-- [ ] **Step 1: 写失败的测试**
+- [ ] **Step 1: 把判定逻辑抽成纯函数，并写失败的测试**
 
-新建 `tests/order-contract.test.mts`，照 `tests/account-contract.test.mts` 的方式启动 `mock-supabase` 并把 `NEXT_PUBLIC_SUPABASE_URL` 指过去。至少覆盖：
+**⚠️ 这一版改过。** 原计划要求"写一个真正驱动路由的契约测试"，**那条路走不通** —— 实测结果：
 
-```ts
-// 1. 非法 plan 返回 400，且不建单
-// 2. 请求体里塞 amount: 0.01 被忽略，返回的 amount 等于 PLANS.bazi.price
-// 3. 未付款订单轮询只返回 status=pending，不带 entitlement
-// 4. 别人的 device cookie 查订单返回 404（不是 403）
-// 5. 确认到账后，同设备轮询拿到 entitlement，且 pass 数 +1
-// 6. 连续轮询两次，第二次不再增加权益（幂等）
-// 7. 建单超过 ORDER_IP_DAILY_LIMIT 次返回 429
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'node_modules/next/server'
 ```
 
-具体断言按仓库既有契约测试的写法（`tests/account-contract.test.mts` 里有可直接照搬的起桩与请求辅助函数）。
+`next@14.2.35` 的 `package.json` **没有 `exports` 字段**，所以路由文件里的 `import { NextRequest } from "next/server"`
+在裸 Node 的 ESM 解析器下解析不了，加 `ts-loader` 也无效（loader 只管 `@/` 与相对路径）。
+**任何 import 路由文件的测试都不可能跑起来。**
+
+这也正是仓库既有代码的做法：`tests/account-contract.test.mts` 把源码当文本读，
+`src/lib/access.ts` 的注释写着「判定本身在 lib 里（纯函数、可单测）；路由只负责把凭证、计数、
+限额三样东西凑齐了交给它」。**原计划把逻辑全写在路由里，违反了仓库自己的架构。**
+
+所以改成：**判定抽到 `src/lib/order-flow.ts`（纯函数、零 `next/*` 依赖），单测它；路由退成薄适配层。**
+
+```ts
+// src/lib/order-flow.ts —— 纯函数，不 import next/*，可被 node --test 直接跑
+export interface OrderStatusInput {
+  order: OrderRow | null;
+  deviceId: string | undefined;
+  /** 请求里带的、已验签的权益；没有则为 null */
+  carried: Entitlement | null;
+  nowSec: number;
+}
+
+export type OrderStatusDecision =
+  | { kind: "not_found" }                                        // → 404
+  | { kind: "unpaid"; status: string }                           // → 200，只回状态
+  | { kind: "claim"; entitlement: Entitlement }                  // 抢占后签发这份
+  | { kind: "delivered"; reissue: Entitlement | null };          // 已交付；reissue 非空才重签
+
+export function decideOrderStatus(input: OrderStatusInput): OrderStatusDecision;
+
+/** 按计划类型算交付后的权益。纯函数。 */
+export function entitlementFor(
+  plan: Plan, current: Entitlement, nowSec: number
+): Entitlement;
+
+/** 订单已过期但钱已到账时也允许确认（见 orders.sql 的 confirm_order）。 */
+export function isConfirmable(status: string): boolean;
+```
+
+`decideOrderStatus` 必须覆盖三个坑：
+
+```ts
+// 1. 订单不存在、或 deviceId 不匹配、或 deviceId 缺失 → { kind: "not_found" }（调用方回 404）
+// 2. status !== "paid"                                  → { kind: "unpaid" }
+// 3. status === "paid" 且 carried === null 且 order.granted 存在
+//                                                       → { kind: "delivered", reissue: granted }
+// 4. status === "paid" 且 carried 非 null                → { kind: "delivered", reissue: null }（不重签）
+// 5. status === "paid" 且 carried === null 且无 granted  → 抛错（数据被外部改过，调用方回 500）
+// 6. status === "paid"                                  → { kind: "claim", entitlement: … }
+```
+
+**注意第 6 条与第 3/4 条的分界**：抢占是数据库的原子操作，纯函数判断不了它成不成功。
+所以纯函数的语义是「**该尝试抢占**」，路由拿到 `claim` 后调 `claimOrderDelivery`；
+返回 null（说明已被并发请求抢走）时，路由再调一次 `decideOrderStatus` 并按 `delivered` 分支处理。
+
+测试文件 `tests/order-flow.test.mts`，覆盖上述六条，外加：
+
+```ts
+// 7. entitlementFor：会员分支用 grantMember、单次分支用 grantPass，且都不自己造 ent
+// 8. entitlementFor 的输出必须过 withTid（即 tid 非空）—— 台账要靠它记账
+// 9. decideOrderStatus 不修改入参（纯函数）
+```
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1483,7 +1538,47 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 5: 跑契约测试**
+- [ ] **Step 5: 刻意更新安全守卫 `tests/no-fake-unlock.test.mts`**
+
+**这一步不是"让测试变绿"，是一个必须留下理由的安全决定。** 那个文件里有两条守卫，
+加 `/api/order/status` 必然触发它们（实测过）：
+
+**(1) `写凭证的位置是封闭的一份名单`（:173）** —— 把新文件加进 `KNOWN`：
+
+```ts
+const KNOWN = [
+  "app/api/ask/route.ts",
+  "app/api/chart/route.ts",
+  "app/api/entitlement/route.ts",
+  "app/api/fortune/route.ts",
+  "app/api/order/status/route.ts",   // ← 新增
+  "app/api/redeem/route.ts",
+  "lib/server/pass-cookie.ts",
+].sort();
+```
+
+并把上方那段解释写入点的注释补一行，说明这一处凭什么在前两类之外还成立。
+
+**(2) `新增的写入点只能回写已验签的凭证，不得自行构造权益`（:195）** ——
+`ALLOWED_ARGS`（:202）目前是 `["next", "ent", "entitlement", "reissued", "guard.reissued", "null"]`。
+
+`/api/order/status` 有两处写入，**必须分别想清楚**：
+
+| 位置 | 传的变量 | 是否合法 |
+|---|---|---|
+| 抢占成功后签发 | `next` | ✅ 已在白名单。与 `redeem` 同一性质：凭一次原子核销/抢占的授权现场算 |
+| 响应丢失后重签 | `snapshot` | ⚠️ **不在白名单，要加 —— 但加之前必须确认它合法** |
+
+`snapshot` 来自 `orders.granted`，而那一列**只可能由 `claim_order_delivery` 写入**，
+该函数要求 `status = 'paid'` **且** `device_id = p_device` **且** `delivered_at is null`。
+所以它是「**恢复一份已被正当授予过的权益**」，不是凭空造。**这与白名单其它项的性质不同，
+所以注释里必须把这个推理写清楚** —— 守卫的全部意义就是禁止随意新增写入点，
+加一个变量却不写理由，等于把守卫变成摆设。
+
+把 `"snapshot"` 加进 `ALLOWED_ARGS`，并在注释里说明：它是持久化在订单行上的、已授权的权益快照，
+用于响应丢失后的恢复；不是现场构造。
+
+- [ ] **Step 5b: 跑测试**
 
 Run: `node --test --import ./scripts/ts-loader.mjs tests/order-contract.test.mts`
 Expected: PASS
