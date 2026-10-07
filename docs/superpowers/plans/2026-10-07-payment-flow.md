@@ -2121,6 +2121,12 @@ git commit -m "文档：上线清单补收款码与订单表，待办里划掉�
 1. **三张微信收款码已在 `public/pay/`**（`wechat-6.60.png` / `wechat-9.90.png` / `wechat-69.00.png`，559×559 方图）。**图片上的金额是物理的** —— 若日后改价，必须同时重做对应图片，否则 `qrSrcFor` 找不到文件、弹窗显示「暂未就绪」。改价是「改 `PLANS` 一行 + 换图」两件事，不能只做一件
 2. **价格已裁决为 6.60**：用户先前报的 6.9 是他第一版做错的图；13:11 重做的 6.60 图与代码一致。原 6.90 的海报仍在微信目录里（未入库），别误用
 3. 确认弹窗里三档价位各自显示出**正确的收款码**（6.60 别显示成 9.90）—— 三张图肉眼极像，只有金额数字不同
-4. **`supabase/orders.sql` 已在生产库执行**，且 `security.sql` 的收口也执行过。跑 `check-supabase.mjs` 确认
-5. **开收款语音提醒** —— 确认唯一的人工环节不会被漏掉
-6. 走一遍完整链路：下单 → 付款 → `confirm-order.mjs` → 页面自动开通 → 再点「获取激活码」在另一台设备兑换
+4. **`supabase/orders.sql` 已在生产库执行**，且 `security.sql` 的收口也执行过（顺序不能反）。跑 `check-supabase.mjs` 确认
+5. **⚠️ 确认 `service_role` 仍有 EXECUTE** —— `security.sql` 的收口把 PUBLIC 的默认授权撤掉了，
+   而 `service_role` 也是 PUBLIC 的成员，所以它同样从 PUBLIC 继承不到 EXECUTE 了。若 Supabase 没给
+   那五个老函数（`merge_entitlement` / `claim_device_entitlement` / `claim_link_code` / `redeem_code` / `bump_usage`）
+   留显式的 `service_role` 授权，**服务端调用会报 42501，权益系统全线失灵**。
+   用 `security.sql:70-75` 那段现成的核对查询确认：期望形状是 `{owner=X/owner,service_role=X/owner}`。
+   若 `service_role` 不在里面，给它显式补一次授权。**这条不验，不要上线。**
+6. **开收款语音提醒** —— 确认唯一的人工环节不会被漏掉
+7. 走一遍完整链路：下单 → 付款 → `confirm-order.mjs` → 页面自动开通 → 再点「获取激活码」在另一台设备兑换
