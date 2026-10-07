@@ -58,13 +58,17 @@
 | `src/components/FortuneForm.tsx` | 传 `plan` prop |
 | `README.md` | 部署步骤补 `orders.sql`；上线清单补收款码路径 |
 
-**新增静态资源（需用户提供，见 spec §15）：**
+**新增静态资源（已备好并裁好，见 spec §6.3）：**
 
 ```
-public/pay/wechat.png
+public/pay/wechat-6.60.png   ← PLANS.bazi.price
+public/pay/wechat-9.90.png   ← PLANS.member_month.price
+public/pay/wechat-69.00.png  ← PLANS.member_year.price
 ```
 
-**只有一张通用收款码，不按金额分张。** 用户反馈微信收款码设不了固定金额，故退回通用码，金额改由页面大字承载。好处是价格与图片彻底解耦：改价是改 `PLANS` 一行代码，不需要重做任何图片。
+每价位一张**带固定金额**的微信收款码（微信支持设金额），所以扫码后金额已填好，用户不需要手输。文件名由 `PLANS` 的价格 `toFixed(2)` 推导，不写死。
+
+三张图已由用户提供、并用 `.tmp/crop-qr.mjs` 裁成 559×559 方图入库（原始海报是 1260×1615 竖版，二维码只占约 40% 宽且印着收款人显示名）。**改价必须同时重做图片** —— 图片上的金额是物理的。
 
 **当前只做微信**（用户 2026-10-07 决定不做支付宝）；`PayChannel.id` 类型仍保留 `"alipay" | "wechat"`，渠道清单里只列微信 —— 渠道集合易变，用数组承载它，加回支付宝只是补一行。
 
@@ -650,19 +654,19 @@ test("金额来自 PLANS，不是调用方传进来的", () => {
   assert.equal(inst.kind, "qr");
 });
 
-test("收款码是通用的一张，路径与其金额无关", () => {
-  // 这条钉住的是「不按金额分张」这个决定。若哪天又改成一张码一个金额，
-  // 这里会红 —— 那时要连带想清楚：图片上的金额是物理的，改价就得重做图。
-  for (const planId of ["bazi", "member_month", "member_year"] as const) {
-    const inst = payInstructionFor(planId);
-    assert.equal(inst.kind, "qr");
-    if (inst.kind !== "qr") return;
-    assert.deepEqual(
-      inst.channels.map((c) => c.qrSrc),
-      ["/pay/wechat.png"],
-      `${planId} 的收款码路径不该随金额变化`
-    );
-  }
+test("金额格式化为两位小数，用于拼收款码文件名", () => {
+  const inst = payInstructionFor("bazi");
+  assert.equal(inst.kind, "qr");
+  if (inst.kind !== "qr") return;
+  assert.deepEqual(inst.channels.map((c) => c.qrSrc), ["/pay/wechat-6.60.png"]);
+});
+
+test("年卡拼出 69.00 而不是 69", () => {
+  // 两位小数不是洁癖：69 与 69.00 会指向两张不同的图，而只有一张存在
+  const inst = payInstructionFor("member_year");
+  assert.equal(inst.kind, "qr");
+  if (inst.kind !== "qr") return;
+  assert.ok(inst.channels[0]!.qrSrc.endsWith("-69.00.png"), inst.channels[0]!.qrSrc);
 });
 
 test("每个计划都给出微信渠道", () => {
@@ -731,17 +735,16 @@ const PROVIDERS: { id: PayChannel["id"]; label: string }[] = [
 /**
  * 收款码图片路径。
  *
- * **不按金额分张** —— 微信收款码设不了固定金额，所以只有一张通用码，
- * 金额由页面展示承载而不是二维码承载。
+ * 两位小数是必须的：金额直接参与拼路径，`69` 与 `69.00` 会指向两张不同的图，
+ * 而只有一张存在 —— 表现是年卡的收款码裂图，月卡的正常，很难从现象反推。
  *
- * 这么做顺带消掉了一个真实风险：原先要求"图片上写死的金额"与 PLANS 一致，
- * 而图片上的金额是物理的、改不了；站长报 6.9 而代码是 6.6 时就会出现
- * 「页面标 6.6、扫码付出 6.9」。现在价格完全由代码决定。
- *
- * 代价：用户仍可能输错金额，所以确认到账时必须核一眼金额。
+ * 每价位一张图，是因为微信收款码**可以**设固定金额，扫码后金额已填好。
+ * 这也意味着改价必须同时重做图片：图片上的金额是物理的、改不了。
+ * 改价后 `qrSrcFor` 会去找一张不存在的图 → 弹窗显示「暂未就绪」。
+ * 宁可显示未就绪，也不要出现「页面标 6.6、扫码付出 6.9」。
  */
-export function qrSrcFor(provider: string): string {
-  return `/pay/${provider}.png`;
+export function qrSrcFor(provider: string, amount: number): string {
+  return `/pay/${provider}-${amount.toFixed(2)}.png`;
 }
 
 export function payInstructionFor(planId: PlanId): PayInstruction {
@@ -749,7 +752,7 @@ export function payInstructionFor(planId: PlanId): PayInstruction {
   return {
     kind: "qr",
     amount: plan.price,
-    channels: PROVIDERS.map((p) => ({ ...p, qrSrc: qrSrcFor(p.id) })),
+    channels: PROVIDERS.map((p) => ({ ...p, qrSrc: qrSrcFor(p.id, plan.price) })),
   };
 }
 ```
@@ -1896,13 +1899,13 @@ useEffect(() => {
 替换现有的收款码区块（原 `qrcode.jpg` 那段）与说明列表。要点：
 
 - 金额醒目展示：`¥{order.amount.toFixed(2)}`，并从 `PLANS[plan].name` 取套餐名
-- **必须保留「金额请手动输入 ¥X」这行提示**（现有代码在 `PaymentModal.tsx:153-155`）。理由变了但结论没变：现在的原因是**收款码是通用的、不带金额**，所以用户必须自己输 —— 删掉它用户就会以为扫完即可
+- **替换掉现有的「金额请手动输入 ¥X」提示**（`PaymentModal.tsx:153-155`）。收款码带了固定金额，扫码后金额已填好，所以那句提示现在是错的 —— 应改为「扫码即可，金额已为你填好 ¥X」
 - **按 `order.instruction.channels` 循环渲染，不要写死渠道个数** —— 当前只有一个（微信），但渠道集合易变，写死两个或写死一个都会在下次调整时变成静默错误。每项渲染一张 `c.qrSrc` 的 `<img onError={() => setQrFailed(true)} />` 加一个 `c.label` 标题
 - 只有一个渠道时不渲染任何渠道切换 UI，直接展示那张码
 - 手机端提示改为「长按图片 → 识别图中二维码」
 - 文案里的渠道名用 `c.label` 取，不要在 JSX 里写死「微信」二字（同一个理由）
 - 保留 `qrFailed` 降级为「收款码暂未就绪」
-- 保留**诚实的交付说明**，但改为三步：扫码并**手动输入金额**付款 → 到账后本页自动开通 → 若换了设备，点下方「获取激活码」
+- 保留**诚实的交付说明**，但改为三步：扫码付款（金额已填好，勿修改）→ 到账后本页自动开通 → 若换了设备，点下方「获取激活码」
 - 加「我已付款，提交交易单号（选填）」折叠区：一个 input（`payerRef`）+ 两个渠道选择按钮 + 提交，成功后展示 `claimNotice`
 - 底部按钮：主按钮「获取激活码」（`btn-mystic`，不是 `btn-primary` —— 主操作此刻是"去付款"），次按钮「取消」
 
@@ -2115,11 +2118,9 @@ git commit -m "文档：上线清单补收款码与订单表，待办里划掉�
 
 这部分计划里做不完，因为它依赖站长本人的账号与资质：
 
-1. **一张微信收款码**（`public/pay/wechat.png`）—— 这是 Task 8 手工验收的前置。两个要求：
-   - **必须是裁成只含二维码的方图**，不要用微信导出的竖版海报：海报缩到 200px 宽后二维码只剩约 180px，手机对着屏幕扫很勉强（同一个坑在支付宝那张上踩过并已修，见 `src/components/PaymentModal.tsx:134-145`）
-   - 裁方图顺带去掉**收款人显示名**，它不该展示给每个访客（同上注释）
-2. **裁决八字单次价格**：代码里是 6.6，站长口头报的是 6.9。**这次改价只动 `PLANS.bazi.price` 一行 + `tests/pricing.test.mts` 里那条断言，与图片无关**（收款码是通用的，不带金额）
-3. **确认到账时必须核金额**：收款码不带金额，用户自己输，所以 `scripts/confirm-order.mjs` 列出的金额是他真正该付的数 —— 对不上就是输错了
+1. **三张微信收款码已在 `public/pay/`**（`wechat-6.60.png` / `wechat-9.90.png` / `wechat-69.00.png`，559×559 方图）。**图片上的金额是物理的** —— 若日后改价，必须同时重做对应图片，否则 `qrSrcFor` 找不到文件、弹窗显示「暂未就绪」。改价是「改 `PLANS` 一行 + 换图」两件事，不能只做一件
+2. **价格已裁决为 6.60**：用户先前报的 6.9 是他第一版做错的图；13:11 重做的 6.60 图与代码一致。原 6.90 的海报仍在微信目录里（未入库），别误用
+3. 确认弹窗里三档价位各自显示出**正确的收款码**（6.60 别显示成 9.90）—— 三张图肉眼极像，只有金额数字不同
 4. **`supabase/orders.sql` 已在生产库执行**，且 `security.sql` 的收口也执行过。跑 `check-supabase.mjs` 确认
 5. **开收款语音提醒** —— 确认唯一的人工环节不会被漏掉
 6. 走一遍完整链路：下单 → 付款 → `confirm-order.mjs` → 页面自动开通 → 再点「获取激活码」在另一台设备兑换
