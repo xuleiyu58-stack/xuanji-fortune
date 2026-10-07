@@ -1,6 +1,9 @@
 export const MAX_SHORT_FIELD = 200;
 export const MAX_LONG_FIELD = 500;
 
+/** 交易单号上限。真实单号约 28 位，给足冗余但不接受无限长的输入。 */
+export const MAX_PAYER_REF_LENGTH = 64;
+
 /**
  * 每个模式接受的字段。白名单之外的一律丢弃，防止脏数据进入 prompt。
  *

@@ -22,6 +22,7 @@ import {
   grantPass,
   type Entitlement,
 } from "@/lib/entitlement";
+import { MAX_PAYER_REF_LENGTH } from "@/lib/validation";
 import type { OrderRow } from "@/lib/server/order-store";
 
 /**
@@ -157,4 +158,121 @@ export function decideOrderStatus(input: OrderStatusInput): OrderStatusDecision 
     kind: "claim",
     entitlement: entitlementFor(PLANS[order.plan], carried ?? EMPTY_ENTITLEMENT, nowSec),
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 交易单号（/api/order/claim）与兜底发码（/api/order/code）
+//
+// 这两条路由同样只能在 lib 里判 —— 理由与 decideOrderStatus 完全一样
+// （路由 import 不了 `next/*`，见文件头）。判定分两半：
+//   · **入参判定**：请求体够不够格，结论是"数据对不对"
+//   · **目标判定**：这单该不该收单号 / 该不该发码，结论是"该不该做"
+// 路由退成适配层：凑参数、调数据库、把结论翻成 HTTP。
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 提交交易单号的入参判定。
+ *
+ * 单号必须是**非空**的：空串提交进库，对账时看到的是一行"提交过但什么都没写"的
+ * 记录 —— 它比没提交更糟，因为它会让站长以为这笔单有凭证可查。
+ */
+export type ClaimInputDecision =
+  | { kind: "invalid"; error: string }
+  | { kind: "ok"; orderId: string; payerRef: string; provider: string | null };
+
+export function decideClaimInput(body: unknown): ClaimInputDecision {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { kind: "invalid", error: "请求格式不正确" };
+  }
+
+  const raw = body as Record<string, unknown>;
+  const orderId = typeof raw.orderId === "string" ? raw.orderId : "";
+  const payerRef = typeof raw.payerRef === "string" ? raw.payerRef.trim() : "";
+  const provider = typeof raw.provider === "string" ? raw.provider : null;
+
+  if (!orderId) return { kind: "invalid", error: "缺少订单号" };
+  if (!payerRef) return { kind: "invalid", error: "请填写交易单号" };
+  if (payerRef.length > MAX_PAYER_REF_LENGTH) {
+    return { kind: "invalid", error: "交易单号过长" };
+  }
+  // 渠道是可选的两个已知值。**刻意不校验单号本身** —— 个人收款码没有可查询的
+  // 接口，服务端无从判断这串数字是不是真的，硬校验只会把真单号误杀。
+  if (provider !== null && provider !== "alipay" && provider !== "wechat") {
+    return { kind: "invalid", error: "付款渠道不正确" };
+  }
+
+  return { kind: "ok", orderId, payerRef, provider };
+}
+
+/** 取激活码的入参判定。只要求一个非空订单号。 */
+export type CodeInputDecision =
+  | { kind: "invalid"; error: string }
+  | { kind: "ok"; orderId: string };
+
+export function decideCodeInput(body: unknown): CodeInputDecision {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { kind: "invalid", error: "请求格式不正确" };
+  }
+  const orderId = (body as Record<string, unknown>).orderId;
+  if (typeof orderId !== "string" || !orderId) {
+    return { kind: "invalid", error: "缺少订单号" };
+  }
+  return { kind: "ok", orderId };
+}
+
+/**
+ * 这单该不该收一份交易单号。
+ *
+ * **deviceId 缺失、订单不存在、设备不匹配一律 `not_found`** —— 三种情况必须长得
+ * 一模一样，调用方统一回 404。回 403 等于确认"这个订单号存在"，那就把接口变成了
+ * 一台订单探测器。
+ *
+ * 只有 `pending` 收：`paid` / `expired` 的单已经定了，再收一份单号
+ * 只会覆盖掉先前那条对账锚点。
+ *
+ * 判定**不看钱、不发权益、不改状态** —— 提交不等于到账，那三件事都不在它的职责里。
+ */
+export type ClaimTargetDecision =
+  | { kind: "not_found" }
+  | { kind: "not_pending" }
+  | { kind: "ok"; order: OrderRow };
+
+export function decideClaimTarget(
+  order: OrderRow | null,
+  deviceId: string | undefined
+): ClaimTargetDecision {
+  if (!order || !deviceId || order.deviceId !== deviceId) return { kind: "not_found" };
+  if (order.status !== "pending") return { kind: "not_pending" };
+  return { kind: "ok", order };
+}
+
+/**
+ * 这单该不该发一个激活码。
+ *
+ * 越权与不存在同样一律 `not_found`（回 404）。只有已到账（`paid`）的单能发码 ——
+ * 发码是"把已到账的权益换个载体交付"，没到账就没有可交付的东西。
+ *
+ * `ok` 分支把套餐一并带出：发码时要按它决定 `kind` / `mode` / `days`，
+ * 带出来省得路由再查一次、也省得在路由里再写一遍 `isPlanId` 的白名单。
+ *
+ * **它不检查 `deliveredAt`**（见 spec §13，刻意的取舍）：先自动到账、再取激活码
+ * 会得到两份权益，堵它需要在目标判定里拒绝已交付的单，而那会同时堵死
+ * 「电脑上已自动到账、现在想给手机也开一个」这种合理需求。
+ */
+export type CodeTargetDecision =
+  | { kind: "not_found" }
+  | { kind: "not_paid" }
+  | { kind: "unknown_plan" }
+  | { kind: "ok"; order: OrderRow; plan: Plan };
+
+export function decideCodeTarget(
+  order: OrderRow | null,
+  deviceId: string | undefined
+): CodeTargetDecision {
+  if (!order || !deviceId || order.deviceId !== deviceId) return { kind: "not_found" };
+  if (order.status !== "paid") return { kind: "not_paid" };
+  // 库里的 plan 只可能由服务端从 PLANS 快照下来，所以这是个异常值，
+  // 不是"用户的套餐下线了"这种能正常发生的事 —— 但两种都得回 400 让用户找客服。
+  if (!isPlanId(order.plan)) return { kind: "unknown_plan" };
+  return { kind: "ok", order, plan: PLANS[order.plan] };
 }

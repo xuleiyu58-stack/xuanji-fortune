@@ -43,6 +43,12 @@ const db = {
 /** 每个 token 对应的用户。真实 Supabase 用 JWT，这里用注册表即可。 */
 const sessions = new Map();    // access_token -> { id, email }
 
+/**
+ * redeem_codes 写入的故障注入模式：none | conflict | error。
+ * 仅测试用，由 /__test__/redeem-insert-mode 切换、/__test__/reset 复位。
+ */
+let redeemInsertMode = "none";
+
 function day() {
   // 与 usage-store 的 today() 同口径：北京时间的自然日
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -505,6 +511,47 @@ const server = createServer(async (req, res) => {
         }
         return json(res, 200, hit);
       }
+
+      // 写入。真实用法是 /api/order/code 发码时 insert({ code, kind, mode, days, batch })。
+      // 主键（code）冲突必须回 23505 —— 发码路由的那段重试逻辑正是靠这个错误码
+      // 分辨"撞码了，换一个再试"与"数据库坏了，撤回发码标记并回 503"。
+      // 少了这条分支，路由拿到的是"表不存在"（42P01），于是撞码被误当成故障。
+      if (method === "POST") {
+        // 故障注入（仅测试用，见 /__test__/redeem-insert-mode）。发码路由的两条
+        // 非正常分支（撞码重试 / 写码失败后撤回发码标记）没有它就没法被真正验证，
+        // 只能靠源码字符串断言 —— 字符串断言挡不住"实现改了但名字还在"。
+        if (redeemInsertMode === "error") {
+          return json(res, 500, { code: "XX000", message: "injected insert failure" });
+        }
+        if (redeemInsertMode === "conflict") {
+          return json(res, 409, {
+            code: "23505",
+            message: 'duplicate key value violates unique constraint "redeem_codes_pkey"',
+          });
+        }
+
+        const body = await readBody(req);
+        const rows = Array.isArray(body) ? body : [body];
+        for (const r of rows) {
+          if (db.redeem_codes.has(r.code)) {
+            return json(res, 409, {
+              code: "23505",
+              message: 'duplicate key value violates unique constraint "redeem_codes_pkey"',
+            });
+          }
+          db.redeem_codes.set(r.code, {
+            kind: r.kind,
+            mode: r.mode ?? null,
+            days: r.days ?? 0,
+            redeemed_at: null,
+            redeemed_by: null,
+            batch: r.batch ?? null,
+          });
+        }
+        // supabase-js 未调 .select() 时不要求返回表示（Prefer: return=minimal），
+        // 与真实 PostgREST 一致 —— 回一行空体即可。
+        return json(res, 201, null);
+      }
     }
 
     // orders：状态转换全走 RPC（见上），REST 只承担读与"提交交易单号"。
@@ -588,7 +635,15 @@ const server = createServer(async (req, res) => {
     db.orders.clear();
     db.otp.clear();
     sessions.clear();
+    redeemInsertMode = "none";
     return json(res, 200, { ok: true });
+  }
+
+  // 测试辅助：切换 redeem_codes 写入的故障注入模式
+  if (path === "/__test__/redeem-insert-mode" && method === "POST") {
+    const body = await readBody(req);
+    redeemInsertMode = String(body?.mode ?? "none");
+    return json(res, 200, { mode: redeemInsertMode });
   }
 
   // 测试辅助：直接播种一张激活码
