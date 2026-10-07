@@ -18,6 +18,51 @@ export const REDEEM_IP_DAILY_LIMIT = 10;
 /** 单次通行证的有效天数。买的一次解读，不该永远躺在浏览器里。 */
 export const SINGLE_PASS_DAYS = 7;
 
+/** 订单有效期（分钟）。过期后前端提示重新下单，但过期单仍可被人工确认。 */
+export const ORDER_TTL_MINUTES = 30;
+
+/** 建单接口按 IP 的每日上限。防的是无限建 pending 单把对账列表炸掉。 */
+export const ORDER_IP_DAILY_LIMIT = 20;
+
+export type PlanId = "bazi" | "member_month" | "member_year";
+
+/**
+ * 可售计划。**这是全站价格的唯一来源。**
+ *
+ * `MODES` 与 `MEMBER_PLANS` 都由它派生 —— 三者并存就是三份真相，
+ * 而价格的每一处不一致最终都会变成"界面写着 6.6、实际扣了 9.9"这种
+ * 只有用户能发现的错误。
+ */
+export interface Plan {
+  id: PlanId;
+  name: string;
+  /** 单位：元 */
+  price: number;
+  kind: "single" | "member";
+  /** kind === "single" 时必有 */
+  mode?: Mode;
+  /** kind === "member" 时为有效天数；single 用 SINGLE_PASS_DAYS */
+  days: number;
+}
+
+export const PLANS: Record<PlanId, Plan> = {
+  bazi: {
+    id: "bazi",
+    name: "八字命理",
+    price: 6.6,
+    kind: "single",
+    mode: "bazi",
+    days: SINGLE_PASS_DAYS,
+  },
+  member_month: { id: "member_month", name: "月卡", price: 9.9, kind: "member", days: 30 },
+  member_year: { id: "member_year", name: "年卡", price: 69, kind: "member", days: 365 },
+};
+
+export function isPlanId(value: string): value is PlanId {
+  // 用 hasOwnProperty：`"toString" in PLANS` 会命中原型链，把它当计划放过去
+  return Object.prototype.hasOwnProperty.call(PLANS, value);
+}
+
 /**
  * 付费模式每日免费体验次数。
  *
@@ -75,7 +120,7 @@ export interface ModeInfo {
 // 刻意不放 icon 字段：图标语言是卦象爻线，在 components/Glyph.tsx 里。
 // emoji 曾放在这里，一旦有了字段就会被顺手引回来。
 export const MODES: Record<Mode, ModeInfo> = {
-  bazi: { title: "八字命理", price: 6.6 },
+  bazi: { title: PLANS.bazi.name, price: PLANS.bazi.price },
 };
 
 export interface MemberPlan {
@@ -86,8 +131,18 @@ export interface MemberPlan {
 }
 
 export const MEMBER_PLANS: ReadonlyArray<MemberPlan> = [
-  { id: "member_month", name: "月卡", price: 9.9, days: 30 },
-  { id: "member_year", name: "年卡", price: 69, days: 365 },
+  {
+    id: "member_month",
+    name: PLANS.member_month.name,
+    price: PLANS.member_month.price,
+    days: PLANS.member_month.days,
+  },
+  {
+    id: "member_year",
+    name: PLANS.member_year.name,
+    price: PLANS.member_year.price,
+    days: PLANS.member_year.days,
+  },
 ];
 
 export function isMode(value: string): value is Mode {
