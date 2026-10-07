@@ -34,6 +34,9 @@ import {
   readPreviewUsage,
   readUsage,
 } from "@/lib/server/usage-store";
+// 来源 IP 的取法只有一处（见 client-ip.ts）。它原先作为私有函数长在本文件里，
+// 而确认页的失败限流要的是同一个口径 —— 两份实现漂移的地方就是绕过限流的入口。
+import { clientIp } from "@/lib/server/client-ip";
 import { ensurePassCookie, nowSec, withPassCookie } from "@/lib/server/pass-cookie";
 import { claimPassConsumption, passIdOf } from "@/lib/server/account-store";
 import { passSecret } from "@/lib/server/runtime";
@@ -96,16 +99,6 @@ export type GuardOutcome =
       isNewDevice: boolean;
     };
 
-function clientIp(req: NextRequest): string {
-  // Vercel 会在 x-forwarded-for 里给出真实来源，取第一段
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip") ?? "0.0.0.0";
-}
-
 /** 新设备才签发 cookie。已签发的原样留着，不重写。 */
 export function withDeviceCookie(
   res: NextResponse,
@@ -167,7 +160,7 @@ export async function quotaGuard(req: NextRequest, mode: string): Promise<GuardO
   // 缺盐时 hashIp 会抛 —— 那是部署少配了环境变量，不该变成一个带堆栈的 500。
   let ipHash: string;
   try {
-    ipHash = hashIp(clientIp(req));
+    ipHash = hashIp(clientIp(req.headers));
   } catch (err) {
     console.error("IP 哈希失败:", err);
     return unavailable("服务暂时不可用，请稍后再试");
@@ -363,7 +356,7 @@ export async function readOnlyGuard(
   // 缺盐时 hashIp 会抛 —— 那是部署少配了环境变量，不该变成一个带堆栈的 500。
   let ipHash: string;
   try {
-    ipHash = hashIp(clientIp(req));
+    ipHash = hashIp(clientIp(req.headers));
   } catch (err) {
     console.error("IP 哈希失败:", err);
     return {

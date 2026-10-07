@@ -15,7 +15,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/"],
+        // /admin 是站长的内部工具页，不是内容页 —— 与 /api/ 同理，不该被爬。
+        // 注意这条只是"请别爬"的君子协定，真正的门是 ADMIN_KEY；
+        // 爬虫不看 robots.txt 时，它遇到的也只是一个 404。
+        disallow: ["/api/", "/admin"],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

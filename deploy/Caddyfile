@@ -16,6 +16,22 @@
 # 而裸域一切正常。这个错误我已经犯过一次。
 #
 # 两个地址写在同一个块里，Caddy 会申请一张同时含两个 SAN 的证书。
+#
+# ⚠️ 不要在这里加 `log`。
+#
+# Caddy 默认**不开**访问日志，这一点对这个项目不是可有可无的：站长的确认页是
+# /admin?key=<ADMIN_KEY>，密钥就在 URL 里。一旦有人给这个站点开了访问日志
+# （Caddy 的 `log` 指令、或前面再加一层会记 URL 的网关），那把钥匙就会
+# 一行一行地写进磁盘上的日志文件 —— 而日志的访问面比 vhost 宽得多，
+# 这套防护的全部价值又都压在那把钥匙上。
+#
+# 确实需要访问日志时，必须先让日志不记 query string
+# （Caddy 的 `log { format filter { ... } }` 或干脆用 `{http.request.uri.path}`），
+# 否则等于把密钥抄了一份到日志里。
+#
+# 同一件事的另一面：`next dev` 会把 `GET /admin?key=… 200 in 97ms` 打到控制台，
+# 而 `next start`（生产用的就是它，见 Dockerfile）不打印请求 URL —— 实测过。
+# 所以本地调试确认页时，别把终端输出贴进聊天窗口。
 {$DOMAIN}, www.{$DOMAIN} {
 	encode zstd gzip
 	reverse_proxy app:3000
