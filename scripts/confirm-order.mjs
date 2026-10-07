@@ -252,13 +252,17 @@ function list(orders, hours) {
 async function confirm(target) {
   const updated = await confirmOrder(target.id, "cli", null);
   if (!updated) {
-    if (target.status === "paid") {
+    // 拿不到更新时**重新读一次**，而不是拿列表里的快照说事：
+    // 快照是几百毫秒前读的，期间这单可能已被另一次确认（或用户自己领到了码）变成 paid，
+    // 照着旧快照说"当前状态是 pending，确认不了"会把站长指向一个不存在的问题。
+    const current = (await getOrder(target.id)) ?? target;
+    if (current.status === "paid") {
       console.log(
         `该单已经是已确认状态，无需重复确认：\n` +
-          `  ${shortId(target.id)}  ${money(target.amount)}  ${planName(target.plan)}  ${clock(target.createdAt)}`
+          `  ${shortId(current.id)}  ${money(current.amount)}  ${planName(current.plan)}  ${clock(current.createdAt)}`
       );
     } else {
-      console.error(`确认失败：订单 ${shortId(target.id)} 当前状态是 ${target.status}，确认不了。`);
+      console.error(`确认失败：订单 ${shortId(current.id)} 当前状态是 ${current.status}，确认不了。`);
       throw new Stop(1);
     }
     return;
