@@ -167,7 +167,7 @@ if (!reachable) {
   process.exit(1);
 }
 
-// ── 2. 三张表 / 四个表 ──────────────────────────────────────
+// ── 2. 四张表 / 四个表 ──────────────────────────────────────
 step(2, "数据表");
 
 /** 只读探测：表存在返回 true */
@@ -194,6 +194,9 @@ const required = [
   // 台账原先在 accounts.sql 里，那是分层错误：单次券防重放与账号体系无关，
   // 只做最小上线的人跑不到它，结果付了钱的用户排不了盘。
   ["pass_consumptions", "pass_id,consumed_at", "supabase/ledger.sql"],
+  // 订单也放进必需项：付款流程改造之后，订单是确认到账与自动交付的唯一载体，
+  // 缺了它建单接口直接 503 —— 与"账号功能可选"是两回事。
+  ["orders", "id,plan,amount,status,provider,payer_ref,device_id,granted,delivered_at,code_issued_at,paid_at,confirmed_by,created_at,expires_at", "supabase/orders.sql"],
 ];
 // 账号功能（可选）。不跑的话账号入口自动隐藏，其余一切照常。
 const optional = [
@@ -247,6 +250,45 @@ if (r1.ok) {
   //   delete from public.usage where key = '__preflight_probe__';
 } else {
   bad("bump_usage 不存在", "执行 supabase/schema.sql");
+}
+
+// 订单状态机的六个函数（supabase/orders.sql）。
+//
+// 这六个刻意不照上面那样"带一个必然不命中的键值真调一次"来探：
+// create_order 的语义就是"插一行订单"，expire_stale_orders 会把过期的
+// pending 单翻成 expired —— 都是写操作，而本脚本的承诺是"不写任何数据"
+// （见文件头）。这里改用 PostgREST 的 OpenAPI 文档：它按 /rpc/<名字>
+// 列出**当前这把钥匙能执行**的函数，一次请求看全部。
+// 顺带多验了一件事：能出现在这份清单里，就说明 service_role 手里有 EXECUTE
+// （函数若只 revoke 不 grant，它会从这里消失，而真调一次也可能只是报权限错）。
+const orderFunctions = [
+  "create_order",
+  "confirm_order",
+  "expire_stale_orders",
+  "claim_order_delivery",
+  "mark_code_issued",
+  "unconfirm_order",
+];
+try {
+  const res = await fetch(`${url}/rest/v1/`, {
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const spec = await res.json();
+  const listed = new Set(
+    Object.keys(spec.paths ?? {})
+      .filter((p) => p.startsWith("/rpc/"))
+      .map((p) => p.slice("/rpc/".length))
+  );
+  for (const fn of orderFunctions) {
+    if (listed.has(fn)) ok(`${fn} 可用`);
+    else bad(`${fn} 不存在`, "执行 supabase/orders.sql");
+  }
+} catch (err) {
+  // 读不到文档（网络、代理、PostgREST 版本差异）不能被报成"函数不存在" ——
+  // 那会把人引去重跑一遍已经跑过的 SQL。与 probe() 同一套原则：
+  // 只有确定的结构问题才算失败，拿不准就如实说拿不准。
+  console.log(`  · 读不到函数清单（${err.message}），订单函数这一节跳过`);
 }
 
 if (accountsReady) {
