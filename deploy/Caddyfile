@@ -1,37 +1,18 @@
-# Caddy 配置。只有三行有效内容 —— 其余都是注释。
+# 站点地址列表。
 #
-# {$DOMAIN} 由 docker-compose 从 .env.production 传进来。
-# 域名一旦出现在 site 地址里，Caddy 就会自动去 Let's Encrypt 申请证书、
-# 自动续期、自动把 http 跳转到 https。不需要写任何 tls 指令。
+# Caddy 只服务它配置里**明确列出**的域名 —— DNS 里指向本机但这里没写的域名，
+# TLS 握手会直接失败（浏览器报「连接不安全 / 无效响应」）。这个坑踩过一次。
 #
-# 前提：域名必须已经解析到这台服务器的公网 IP。没解析就申请不到证书，
-# Caddy 会一直重试并打日志（docker compose logs caddy 能看到）。
+# ⚠️ 不要加 `log`。确认页是 /admin?key=<ADMIN_KEY>，密钥在 URL 里；
+# 一旦开了访问日志，那把钥匙会被一行一行写进磁盘。确实要日志，必须先过滤掉 query string。
+#
+# 同一件事的另一面：`next dev` 会把 `GET /admin?key=… 200` 打到控制台，
+# `next start`（生产用的）不打印 —— 本地调试时别把终端输出贴出去。
+#
+# ⚠️ 改了本文件后要 `docker compose restart caddy`，不能只 `caddy reload`。
+# 单文件挂载把 inode 钉死了，用 tar/编辑器覆盖文件会换 inode，容器读到的还是旧内容
+# （表现为 reload 说 "config is unchanged" 而宿主机上文件明明改了）。这个坑也踩过一次。
 
-# ⚠️ www 必须一起写上。
-#
-# DNS 里 `www` 也有一条 A 记录指向本机（见 docs/deploy-hongkong.md 第 1 步），
-# 而 Caddy 只服务它配置里**明确列出的**站点地址。只写裸域的话，
-# 访问 www 时 Caddy 没有对应的站点，TLS 握手会直接失败 ——
-# 浏览器报的是「此站点的连接不安全 / 发送了无效的响应」，
-# 而裸域一切正常。这个错误我已经犯过一次。
-#
-# 两个地址写在同一个块里，Caddy 会申请一张同时含两个 SAN 的证书。
-#
-# ⚠️ 不要在这里加 `log`。
-#
-# Caddy 默认**不开**访问日志，这一点对这个项目不是可有可无的：站长的确认页是
-# /admin?key=<ADMIN_KEY>，密钥就在 URL 里。一旦有人给这个站点开了访问日志
-# （Caddy 的 `log` 指令、或前面再加一层会记 URL 的网关），那把钥匙就会
-# 一行一行地写进磁盘上的日志文件 —— 而日志的访问面比 vhost 宽得多，
-# 这套防护的全部价值又都压在那把钥匙上。
-#
-# 确实需要访问日志时，必须先让日志不记 query string
-# （Caddy 的 `log { format filter { ... } }` 或干脆用 `{http.request.uri.path}`），
-# 否则等于把密钥抄了一份到日志里。
-#
-# 同一件事的另一面：`next dev` 会把 `GET /admin?key=… 200 in 97ms` 打到控制台，
-# 而 `next start`（生产用的就是它，见 Dockerfile）不打印请求 URL —— 实测过。
-# 所以本地调试确认页时，别把终端输出贴进聊天窗口。
 {$DOMAIN}, www.{$DOMAIN} {
 	encode zstd gzip
 	reverse_proxy app:3000
