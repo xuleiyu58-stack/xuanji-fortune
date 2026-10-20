@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_CONFIRM_BY, checkAdmin } from "@/lib/server/admin-guard";
 import { confirmOrder } from "@/lib/server/order-store";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * 确认到账。站长在 /admin 上点一下「确认到账」，打的就是这里。
@@ -118,9 +119,7 @@ function redirectBack(
   key: string,
   params: { ok?: string; err?: string }
 ): NextResponse {
-  const back = req.nextUrl.clone();
-  back.pathname = "/admin";
-  back.search = "";
+  const back = new URL("/admin", SITE_URL);
   back.searchParams.set("key", key);
   if (params.ok) back.searchParams.set("ok", params.ok);
   if (params.err) back.searchParams.set("err", params.err);
